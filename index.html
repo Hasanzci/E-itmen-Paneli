@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eğitmen Platformu</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Quill (Word benzeri editör) -->
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+  <style>
+    /* Editör için ek stiller */
+    #materialEditor { background: #fff; min-height: 480px; font-size: 15px; }
+    #materialEditor .ql-editor { min-height: 480px; line-height: 1.7; padding: 20px 24px; }
+    .ql-toolbar.ql-snow { border-radius: 8px 8px 0 0; background: #fafbff; border-color: #e5e7eb; }
+    .ql-container.ql-snow { border-radius: 0 0 8px 8px; border-color: #e5e7eb; }
+    .editor-extra-toolbar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .ql-editor iframe { max-width: 100%; border-radius: 6px; }
+    .ql-editor h1 { font-size: 24px; }
+    .ql-editor h2 { font-size: 20px; }
+    .ql-editor h3 { font-size: 17px; }
+  </style>
 </head>
 <body>
   <header id="topbar" class="hidden">
@@ -80,7 +94,6 @@
           <button class="tab" data-admintab="instructors">Eğitmenler</button>
         </div>
 
-        <!-- ADMIN: KURSLAR -->
         <div id="admin-courses" class="admin-tab active">
           <form id="addCourseForm" class="row-form">
             <input type="text" id="newCourseName" placeholder="Kurs adı (örn. Arduino Kursu)" required />
@@ -90,7 +103,6 @@
           <div id="adminCoursesList" class="admin-list"></div>
         </div>
 
-        <!-- ADMIN: EĞİTMENLER -->
         <div id="admin-instructors" class="admin-tab">
           <form id="addInstructorForm" class="row-form">
             <input type="text" id="newInsName" placeholder="Ad Soyad" required />
@@ -117,26 +129,22 @@
       </div>
     </section>
 
-    <!-- ========== ADMIN: MATERYAL EDİTÖRÜ ========== -->
+    <!-- ========== ADMIN: MATERYAL EDİTÖRÜ (Word benzeri) ========== -->
     <section id="view-admin-material" class="view">
       <div class="container">
         <button class="btn btn-ghost back" id="backToAdminCourse">← Derslere Dön</button>
         <h2 id="adminMaterialTitle">Materyal Editörü</h2>
         <p class="muted">
-          HTML yazabilirsin. Üstteki butonlardan hızlı şablon ekleyebilirsin.
+          Yazıyı seç ve üstteki butonlardan biçimlendir. YouTube/Genially gömmek için aşağıdaki butonları kullan.
         </p>
 
-        <div class="editor-toolbar">
-          <button type="button" class="btn btn-ghost" data-insert="heading">Başlık</button>
-          <button type="button" class="btn btn-ghost" data-insert="paragraph">Paragraf</button>
-          <button type="button" class="btn btn-ghost" data-insert="link">Link</button>
-          <button type="button" class="btn btn-ghost" data-insert="pdf">PDF</button>
-          <button type="button" class="btn btn-ghost" data-insert="video">YouTube</button>
-          <button type="button" class="btn btn-ghost" data-insert="genially">Genially</button>
-          <button type="button" class="btn btn-ghost" data-insert="list">Liste</button>
+        <div class="editor-extra-toolbar">
+          <button type="button" class="btn btn-ghost btn-sm" id="insertYoutubeBtn">▶️ YouTube Ekle</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="insertGeniallyBtn">📊 Genially Ekle</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="insertPdfBtn">📄 PDF Linki</button>
         </div>
 
-        <textarea id="materialEditor" rows="18" placeholder="Buraya ders içeriğini yaz..."></textarea>
+        <div id="materialEditor"></div>
 
         <div class="editor-actions">
           <button id="saveMaterialBtn" class="btn btn-primary">💾 Kaydet</button>
@@ -152,6 +160,8 @@
   <div id="loader" class="loader hidden"><div class="spinner"></div></div>
   <div id="toast" class="toast"></div>
 
+  <!-- Quill JS (app.js'ten önce yüklenmeli) -->
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

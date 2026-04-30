@@ -1,6 +1,5 @@
 /* ===========================================================
-   EĞİTMEN PLATFORMU - Frontend
-   ↓ ALTTAKİ API_URL'YE Apps Script Web App URL'sini yapıştır.
+   EĞİTMEN PLATFORMU - Frontend (Quill / Word benzeri editör)
    =========================================================== */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxv_irFUNcb9W9qaojfdYNc3k9r1KWl-MuB-vNwgvSNIbbjTlcFUYcy7JKp-HO8SctMlg/exec";
@@ -13,6 +12,8 @@ const state = {
   cache: { courses: [], lessons: {}, instructors: [] }
 };
 
+let quill = null; // Quill editör örneği (lazy-init)
+
 // ---------- API ----------
 async function api(action, payload = {}) {
   if (!API_URL || API_URL.includes("BURAYA_GOOGLE")) {
@@ -22,7 +23,7 @@ async function api(action, payload = {}) {
   try {
     const res = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" }, // CORS preflight'tan kaçınmak için
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action, ...payload })
     });
     const data = await res.json();
@@ -33,7 +34,7 @@ async function api(action, payload = {}) {
   }
 }
 
-// ---------- UI ----------
+// ---------- UI yardımcıları ----------
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
 
@@ -369,60 +370,128 @@ function setupAddLesson() {
   });
 }
 
+// ============= MATERYAL EDİTÖRÜ (Quill) =============
+
+function ensureQuill() {
+  if (quill) return quill;
+  quill = new Quill('#materialEditor', {
+    theme: 'snow',
+    placeholder: 'Buraya ders içeriğini yaz... Yazıyı seç, üstteki butonlardan kalın/italik/başlık/liste yap.',
+    modules: {
+      toolbar: [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'color': [] }, { 'background': [] }],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        [{ 'align': [] }],
+        [{ 'indent': '-1' }, { 'indent': '+1' }],
+        ['blockquote', 'code-block'],
+        ['link', 'image'],
+        ['clean']
+      ]
+    }
+  });
+  return quill;
+}
+
 async function openAdminMaterial(lessonId, title) {
   state.currentLessonId = lessonId;
   state.currentLessonTitle = title;
   show("view-admin-material");
   $("#adminMaterialTitle").textContent = title + " - Materyal";
   $("#materialPreview").style.display = "none";
+
+  ensureQuill(); // ilk seferinde başlat
   try {
     const res = await api("getMaterials", { lessonId });
-    $("#materialEditor").value = (res.data && res.data.content) || "";
+    const content = (res.data && res.data.content) || "";
+    // Mevcut içeriği yükle
+    quill.root.innerHTML = content;
   } catch (e) { toast(e.message, "error"); }
 }
 
 function setupMaterialEditor() {
-  const snippets = {
-    heading: "\n<h2>Başlık</h2>\n",
-    paragraph: "\n<p>Buraya metin yaz...</p>\n",
-    link: '\n<p><a href="https://..." target="_blank">Link metni</a></p>\n',
-    pdf: '\n<p>📄 <a href="https://drive.google.com/file/d/.../view" target="_blank">PDF Dosyası</a></p>\n',
-    video: '\n<iframe width="560" height="315" src="https://www.youtube.com/embed/VIDEO_ID" frameborder="0" allowfullscreen></iframe>\n',
-    genially: '\n<iframe src="https://view.genial.ly/..." width="100%" height="500" frameborder="0" allowfullscreen></iframe>\n',
-    list: "\n<ul>\n  <li>Madde 1</li>\n  <li>Madde 2</li>\n  <li>Madde 3</li>\n</ul>\n"
-  };
-  $$("[data-insert]").forEach(b => {
-    b.addEventListener("click", () => {
-      const ta = $("#materialEditor");
-      const snippet = snippets[b.dataset.insert] || "";
-      const start = ta.selectionStart;
-      ta.value = ta.value.slice(0, start) + snippet + ta.value.slice(start);
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = start + snippet.length;
-    });
-  });
-
+  // KAYDET
   $("#saveMaterialBtn").addEventListener("click", async () => {
+    if (!quill) return;
     try {
       await api("saveMaterial", {
         lessonId: state.currentLessonId,
-        content: $("#materialEditor").value,
+        content: quill.root.innerHTML,
         type: "html"
       });
       toast("Materyal kaydedildi", "success");
     } catch (e) { toast(e.message, "error"); }
   });
 
+  // ÖNİZLE
   $("#previewMaterialBtn").addEventListener("click", () => {
+    if (!quill) return;
     const p = $("#materialPreview");
     if (p.style.display === "none") {
-      p.innerHTML = $("#materialEditor").value;
+      p.innerHTML = quill.root.innerHTML;
       p.style.display = "block";
+      p.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
       p.style.display = "none";
     }
   });
+
+  // YOUTUBE EKLE
+  $("#insertYoutubeBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const url = prompt("YouTube video URL'sini yapıştır:\n(örn. https://www.youtube.com/watch?v=XXXXX)");
+    if (!url) return;
+    const embedUrl = toYoutubeEmbed(url);
+    if (!embedUrl) { toast("Geçerli bir YouTube linki gir.", "error"); return; }
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertEmbed(range.index, 'video', embedUrl, 'user');
+    quill.insertText(range.index + 1, '\n', 'user');
+    quill.setSelection(range.index + 2);
+  });
+
+  // GENIALLY EKLE
+  $("#insertGeniallyBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const url = prompt("Genially URL'sini yapıştır:\n(örn. https://view.genial.ly/XXXXXX)");
+    if (!url) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertEmbed(range.index, 'video', url, 'user');
+    quill.insertText(range.index + 1, '\n', 'user');
+    quill.setSelection(range.index + 2);
+  });
+
+  // PDF LİNKİ EKLE
+  $("#insertPdfBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const url = prompt("PDF linkini yapıştır:\n(Google Drive paylaşım linki olabilir)");
+    if (!url) return;
+    const text = prompt("Görünecek metin:", "📄 Ders Notları (PDF)") || "📄 PDF";
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertText(range.index, text, { link: url }, 'user');
+    quill.insertText(range.index + text.length, '\n', 'user');
+    quill.setSelection(range.index + text.length + 1);
+  });
 }
+
+// YouTube linkini embed formuna çevir
+function toYoutubeEmbed(url) {
+  try {
+    const u = new URL(url);
+    let id = "";
+    if (u.hostname.includes("youtu.be")) {
+      id = u.pathname.slice(1);
+    } else if (u.hostname.includes("youtube.com")) {
+      if (u.pathname === "/watch") id = u.searchParams.get("v");
+      else if (u.pathname.startsWith("/embed/")) id = u.pathname.split("/")[2];
+      else if (u.pathname.startsWith("/shorts/")) id = u.pathname.split("/")[2];
+    }
+    if (!id) return null;
+    return "https://www.youtube.com/embed/" + id;
+  } catch { return null; }
+}
+
+// ============= EĞİTMENLER =============
 
 async function loadInstructors() {
   try {
