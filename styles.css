@@ -1,17 +1,17 @@
 /* ============== TEMEL ============== */
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
 :root {
-  --bg-main: #0f1115;
-  --bg-sidebar: #17191f;
-  --bg-card: #1c1e26;
-  --bg-hover: #262933;
+  --bg-main: #0b1622;
+  --bg-sidebar: #112234;
+  --bg-card: #162a3d;
+  --bg-hover: #1f3b54;
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
-  --border: #2d3139;
-  --danger: #ef4444;
-  --success: #10b981;
+  --text-muted: #a3b8cc;
+  --primary: #823aaf;
+  --primary-hover: #652772;
+  --border: #264059;
+  --danger: #ea0c64;
+  --success: #268792;
   --shadow: 0 8px 24px rgba(0,0,0,0.4);
   --sidebar-width: 260px;
 }
@@ -102,7 +102,7 @@ body.login-mode #app { margin-left: 0; width: 100%; }
   color: var(--text-main);
 }
 .nav-item.active {
-  background: rgba(99, 102, 241, 0.15);
+  background: rgba(130, 58, 175, 0.15);
   color: var(--primary);
 }
 .sidebar-footer {
@@ -152,8 +152,8 @@ body.login-mode #app { margin-left: 0; width: 100%; }
   display: inline-flex; align-items: center; gap: 6px;
 }
 .btn:active { transform: scale(0.96); }
-.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2); }
-.btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 14px rgba(99, 102, 241, 0.4); }
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(130, 58, 175, 0.2); }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 14px rgba(130, 58, 175, 0.4); }
 .btn-ghost { background: transparent; color: var(--text-main); border: 1px solid var(--border); }
 .btn-ghost:hover { background: var(--bg-hover); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
 .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
@@ -330,7 +330,7 @@ body.login-mode #app { margin-left: 0; width: 100%; }
   padding-bottom: 40px;
 }
 .ql-editor {
-  background: #1e2029;
+  background: var(--bg-card);
   color: #e2e8f0;
   max-width: 900px;
   margin: 32px auto 0;
