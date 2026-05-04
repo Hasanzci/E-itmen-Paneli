@@ -6,7 +6,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxv_irFUNcb9W9qaojfdYNc
 
 // ---------- Durum ----------
 const state = {
-  role: null, user: null,
+  role: null, user: null, token: null,
   currentCourseId: null, currentCourseName: "",
   currentLessonId: null, currentLessonTitle: ""
 };
@@ -86,7 +86,7 @@ async function api(action, payload = {}, opts = {}) {
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, ...payload })
+      body: JSON.stringify({ action, token: state.token, ...payload })
     });
     const data = await res.json();
     if (data.ok === false) throw new Error(data.error || "Bilinmeyen hata.");
@@ -134,7 +134,7 @@ function setTopbarActions(html) {
 
 // ---------- OTURUM ----------
 function saveSession() {
-  localStorage.setItem("session", JSON.stringify({ role: state.role, user: state.user }));
+  localStorage.setItem("session", JSON.stringify({ role: state.role, user: state.user, token: state.token }));
 }
 function loadSession() {
   const raw = localStorage.getItem("session");
@@ -142,7 +142,7 @@ function loadSession() {
   try {
     const s = JSON.parse(raw);
     if (!s.role) return false;
-    state.role = s.role; state.user = s.user;
+    state.role = s.role; state.user = s.user; state.token = s.token;
     return true;
   } catch { return false; }
 }
@@ -171,7 +171,7 @@ function setupLogin() {
         email: $("#insEmail").value,
         password: $("#insPassword").value
       });
-      state.role = "instructor"; state.user = res.user;
+      state.role = "instructor"; state.user = res.user; state.token = res.token;
       saveSession();
       enterApp();
     } catch (err) { $("#loginError").textContent = err.message; }
@@ -181,8 +181,8 @@ function setupLogin() {
     e.preventDefault();
     $("#loginError").textContent = "";
     try {
-      await api("adminLogin", { password: $("#adminPassword").value });
-      state.role = "admin"; state.user = { name: "Admin" };
+      const res = await api("adminLogin", { password: $("#adminPassword").value });
+      state.role = "admin"; state.user = { name: "Admin" }; state.token = res.token;
       saveSession();
       enterApp();
     } catch (err) { $("#loginError").textContent = err.message; }
@@ -192,8 +192,9 @@ function setupLogin() {
 function setupLogout() {
   $("#logoutBtn").addEventListener("click", () => {
     clearSession();
-    state.role = null; state.user = null;
+    state.role = null; state.user = null; state.token = null;
     document.body.classList.add("login-mode");
+    $("#nav-admin").classList.add("hidden");
     show("view-login");
   });
   
@@ -222,6 +223,8 @@ async function enterApp() {
   
   if (state.role === "admin") {
     $("#nav-admin").classList.remove("hidden");
+  } else {
+    $("#nav-admin").classList.add("hidden");
   }
 
   // İlk yüklemede cache'den göster
@@ -364,6 +367,10 @@ function setupAdminTabs() {
 }
 
 async function openAdmin() {
+  if (state.role !== "admin") {
+    toast("Güvenlik: Bu alana erişim yetkiniz yok.", "error");
+    return;
+  }
   show("view-admin");
   setBreadcrumbs(["Yönetim", "Admin Paneli"]);
   setTopbarActions("");
