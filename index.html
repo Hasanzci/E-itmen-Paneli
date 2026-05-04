@@ -3,104 +3,117 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Eğitmen Platformu</title>
+  <title>ArtCoding - Eğitmen Platformu</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Quill (Word benzeri editör) -->
   <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
-  <style>
-    /* Editör için ek stiller */
-    #materialEditor { background: #fff; min-height: 480px; font-size: 15px; }
-    #materialEditor .ql-editor { min-height: 480px; line-height: 1.7; padding: 20px 24px; }
-    .ql-toolbar.ql-snow { border-radius: 8px 8px 0 0; background: #fafbff; border-color: #e5e7eb; }
-    .ql-container.ql-snow { border-radius: 0 0 8px 8px; border-color: #e5e7eb; }
-    .editor-extra-toolbar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-    .ql-editor iframe { max-width: 100%; border-radius: 6px; }
-    .ql-editor h1 { font-size: 24px; }
-    .ql-editor h2 { font-size: 20px; }
-    .ql-editor h3 { font-size: 17px; }
-  </style>
 </head>
-<body>
-  <header id="topbar" class="hidden">
-    <div class="brand" id="brandClick">📚 Eğitmen Platformu</div>
-    <div class="topbar-right">
-      <span id="userLabel"></span>
-      <button id="logoutBtn" class="btn btn-ghost">Çıkış</button>
+<body class="login-mode">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <img src="logo.svg" alt="ArtCoding Logo" class="brand-logo" />
+        ArtCoding
+      </div>
     </div>
-  </header>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Menü</div>
+      <a href="#" id="nav-courses" class="nav-item active">📚 Kurslarımız</a>
+      <a href="#" id="nav-admin" class="nav-item hidden">⚙️ Admin Paneli</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-name" id="userLabel">Kullanıcı</div>
+      </div>
+      <button id="logoutBtn" class="btn btn-ghost btn-icon" title="Çıkış">🚪</button>
+    </div>
+  </aside>
 
+  <!-- ================= MAIN APP ================= -->
   <main id="app">
+    
+    <!-- TOPBAR -->
+    <header id="topbar" class="hidden">
+      <div class="breadcrumbs" id="breadcrumbs">Ana Sayfa</div>
+      <div class="topbar-right" id="topbarActions">
+        <!-- JS will inject buttons here -->
+      </div>
+    </header>
 
-    <!-- ========== GİRİŞ EKRANI ========== -->
-    <section id="view-login" class="view active">
-      <div class="login-card">
-        <h1>Giriş Yap</h1>
-        <div class="tabs">
-          <button class="tab active" data-tab="instructor">Eğitmen Girişi</button>
-          <button class="tab" data-tab="admin">Admin Girişi</button>
+    <div class="content-area">
+
+      <!-- ========== GİRİŞ EKRANI ========== -->
+      <section id="view-login" class="view active">
+        <div class="login-wrapper">
+          <div class="login-card">
+            <div class="login-mascot-wrapper">
+              <img src="maskot.svg" alt="ArtCoding Maskot" class="login-mascot" />
+            </div>
+            <h1>ArtCoding'e Giriş</h1>
+            <div class="tabs">
+              <button class="tab active" data-tab="instructor">Eğitmen Girişi</button>
+              <button class="tab" data-tab="admin">Admin Girişi</button>
+            </div>
+
+            <form id="instructorForm" class="login-form active">
+              <label>E-posta</label>
+              <input type="email" id="insEmail" placeholder="ornek@artcoding.org" required />
+              <label>Şifre</label>
+              <input type="password" id="insPassword" placeholder="••••••••" required />
+              <button class="btn btn-primary" type="submit">Giriş Yap</button>
+            </form>
+
+            <form id="adminForm" class="login-form">
+              <label>Admin Şifresi</label>
+              <input type="password" id="adminPassword" placeholder="••••••••" required />
+              <button class="btn btn-primary" type="submit">Admin Girişi</button>
+            </form>
+
+            <p id="loginError" class="error"></p>
+          </div>
         </div>
+      </section>
 
-        <form id="instructorForm" class="login-form active">
-          <label>E-posta</label>
-          <input type="email" id="insEmail" required />
-          <label>Şifre</label>
-          <input type="password" id="insPassword" required />
-          <button class="btn btn-primary" type="submit">Giriş Yap</button>
-        </form>
+      <!-- ========== EĞİTMEN: KURS LİSTESİ ========== -->
+      <section id="view-courses" class="view">
+        <h1 style="font-size:28px; margin-bottom: 8px;">Kurslarımız</h1>
+        <p class="muted" style="border-bottom: 1px solid var(--border); padding-bottom: 16px;">Tüm kurs materyallerine buradan ulaşabilirsiniz.</p>
+        <div id="coursesList" class="list-container"></div>
+      </section>
 
-        <form id="adminForm" class="login-form">
-          <label>Admin Şifresi</label>
-          <input type="password" id="adminPassword" required />
-          <button class="btn btn-primary" type="submit">Admin Girişi</button>
-        </form>
+      <!-- ========== EĞİTMEN: DERS LİSTESİ ========== -->
+      <section id="view-lessons" class="view">
+        <h1 id="lessonsTitle" style="font-size:28px; margin-bottom: 8px;">Dersler</h1>
+        <p class="muted" style="border-bottom: 1px solid var(--border); padding-bottom: 16px;">Bu kursa ait tüm dersler aşağıda listelenmiştir.</p>
+        <div id="lessonsList" class="list-container"></div>
+      </section>
 
-        <p id="loginError" class="error"></p>
-      </div>
-    </section>
-
-    <!-- ========== EĞİTMEN: KURS LİSTESİ ========== -->
-    <section id="view-courses" class="view">
-      <div class="container">
-        <h2>Kurslar</h2>
-        <p class="muted">Bir kursa tıklayarak ders listesini görebilirsin.</p>
-        <div id="coursesGrid" class="card-grid"></div>
-      </div>
-    </section>
-
-    <!-- ========== EĞİTMEN: DERS LİSTESİ ========== -->
-    <section id="view-lessons" class="view">
-      <div class="container">
-        <button class="btn btn-ghost back" data-back="courses">← Kurslara Dön</button>
-        <h2 id="lessonsTitle">Dersler</h2>
-        <div id="lessonsList" class="lesson-list"></div>
-      </div>
-    </section>
-
-    <!-- ========== EĞİTMEN: DERS DETAY ========== -->
-    <section id="view-material" class="view">
-      <div class="container">
-        <button class="btn btn-ghost back" data-back="lessons">← Derslere Dön</button>
-        <h2 id="materialTitle">Ders Materyalleri</h2>
+      <!-- ========== EĞİTMEN: DERS DETAY ========== -->
+      <section id="view-material" class="view">
+        <h1 id="materialTitle" style="font-size:28px;">Materyal</h1>
         <div id="materialContent" class="material"></div>
-      </div>
-    </section>
+      </section>
 
-    <!-- ========== ADMIN: PANEL ========== -->
-    <section id="view-admin" class="view">
-      <div class="container">
-        <h2>Admin Paneli</h2>
+      <!-- ========== ADMIN: PANEL ========== -->
+      <section id="view-admin" class="view">
+        <h1 style="font-size:28px; margin-bottom: 24px;">Admin Paneli</h1>
         <div class="tabs">
-          <button class="tab active" data-admintab="courses">Kurslar</button>
-          <button class="tab" data-admintab="instructors">Eğitmenler</button>
+          <button class="tab active" data-admintab="courses">Kurs Yönetimi</button>
+          <button class="tab" data-admintab="instructors">Eğitmen Yönetimi</button>
         </div>
 
         <div id="admin-courses" class="admin-tab active">
           <form id="addCourseForm" class="row-form">
-            <input type="text" id="newCourseName" placeholder="Kurs adı (örn. Arduino Kursu)" required />
-            <input type="text" id="newCourseDesc" placeholder="Kısa açıklama (opsiyonel)" />
-            <button class="btn btn-primary" type="submit">+ Kurs Ekle</button>
+            <input type="text" id="newCourseName" placeholder="Kurs adı (örn. Python LVL1)" required />
+            <input type="text" id="newCourseDesc" placeholder="Kısa açıklama" />
+            <button class="btn btn-primary" type="submit">+ Ekle</button>
           </form>
-          <div id="adminCoursesList" class="admin-list"></div>
+          <div id="adminCoursesList" class="list-container" style="margin-top: 0;"></div>
         </div>
 
         <div id="admin-instructors" class="admin-tab">
@@ -108,59 +121,46 @@
             <input type="text" id="newInsName" placeholder="Ad Soyad" required />
             <input type="email" id="newInsEmail" placeholder="E-posta" required />
             <input type="text" id="newInsPassword" placeholder="Şifre" required />
-            <button class="btn btn-primary" type="submit">+ Eğitmen Ekle</button>
+            <button class="btn btn-primary" type="submit">+ Ekle</button>
           </form>
-          <div id="adminInstructorsList" class="admin-list"></div>
+          <div id="adminInstructorsList" class="list-container" style="margin-top: 0;"></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- ========== ADMIN: KURS DETAY ========== -->
-    <section id="view-admin-course" class="view">
-      <div class="container">
-        <button class="btn btn-ghost back" data-back="admin">← Admin Paneline Dön</button>
-        <h2 id="adminCourseTitle">Kurs Detayı</h2>
-
+      <!-- ========== ADMIN: KURS DETAY ========== -->
+      <section id="view-admin-course" class="view">
+        <h1 id="adminCourseTitle" style="font-size:28px; margin-bottom: 24px;">Kurs Detayı</h1>
         <form id="addLessonForm" class="row-form">
-          <input type="text" id="newLessonTitle" placeholder="Ders adı (örn. Ders 1)" required />
+          <input type="text" id="newLessonTitle" placeholder="Ders adı (örn. M1L1 Giriş)" required />
           <button class="btn btn-primary" type="submit">+ Ders Ekle</button>
         </form>
-        <div id="adminLessonsList" class="admin-list"></div>
-      </div>
-    </section>
+        <div id="adminLessonsList" class="list-container" style="margin-top: 0;"></div>
+      </section>
 
-    <!-- ========== ADMIN: MATERYAL EDİTÖRÜ (Word benzeri) ========== -->
-    <section id="view-admin-material" class="view">
-      <div class="container">
-        <button class="btn btn-ghost back" id="backToAdminCourse">← Derslere Dön</button>
-        <h2 id="adminMaterialTitle">Materyal Editörü</h2>
-        <p class="muted">
-          Yazıyı seç ve üstteki butonlardan biçimlendir. YouTube/Genially gömmek için aşağıdaki butonları kullan.
-        </p>
+      <!-- ========== ADMIN: MATERYAL EDİTÖRÜ ========== -->
+      <section id="view-admin-material" class="view">
+        <h1 id="adminMaterialTitle" style="font-size:28px; margin-bottom: 8px;">Materyal Editörü</h1>
+        <p class="muted">Aşağıdaki araçları kullanarak ders içeriğini oluşturabilirsiniz.</p>
 
         <div class="editor-extra-toolbar">
           <button type="button" class="btn btn-ghost btn-sm" id="insertYoutubeBtn">▶️ YouTube Ekle</button>
           <button type="button" class="btn btn-ghost btn-sm" id="insertGeniallyBtn">📊 Genially Ekle</button>
           <button type="button" class="btn btn-ghost btn-sm" id="insertPdfBtn">📄 PDF Linki</button>
+          <button type="button" class="btn btn-primary btn-sm" id="insertImgBtn" style="background:#10b981;">🖼️ Resim Ekle (Altına Yazılabilir)</button>
         </div>
 
         <div id="materialEditor"></div>
 
-        <div class="editor-actions">
-          <button id="saveMaterialBtn" class="btn btn-primary">💾 Kaydet</button>
-          <button id="previewMaterialBtn" class="btn btn-ghost">👁 Önizle</button>
-        </div>
-
         <div id="materialPreview" class="material" style="display:none;"></div>
-      </div>
-    </section>
+      </section>
 
+    </div>
   </main>
 
-  <div id="loader" class="loader hidden"><div class="spinner"></div></div>
+  <div id="loader" class="loader hidden"><div class="spinner"></div> Güncelleniyor...</div>
   <div id="toast" class="toast"></div>
 
-  <!-- Quill JS (app.js'ten önce yüklenmeli) -->
+  <!-- Quill JS -->
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script src="app.js"></script>
 </body>

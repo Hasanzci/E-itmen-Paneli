@@ -1,5 +1,5 @@
 /* ===========================================================
-   EĞİTMEN PLATFORMU - Frontend (cache + akıllı yükleyici)
+   EĞİTMEN PLATFORMU - Frontend (LocalStorage Cache + Hızlandırılmış UI)
    =========================================================== */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxv_irFUNcb9W9qaojfdYNc3k9r1KWl-MuB-vNwgvSNIbbjTlcFUYcy7JKp-HO8SctMlg/exec";
@@ -11,12 +11,38 @@ const state = {
   currentLessonId: null, currentLessonTitle: ""
 };
 
-// ---------- CACHE ----------
+// ---------- CACHE (LocalStorage entegrasyonlu - Anında açılma) ----------
 const cache = {
-  courses: null,             // Kurs listesi
-  lessons: {},               // courseId -> ders listesi
-  materials: {},             // lessonId -> { content, type }
-  instructors: null,         // Eğitmen listesi
+  courses: null,
+  lessons: {},
+  materials: {},
+  instructors: null,
+  
+  load() {
+    try {
+      const data = JSON.parse(localStorage.getItem("app_cache_v2"));
+      if (data) {
+        this.courses = data.courses;
+        this.lessons = data.lessons || {};
+        this.instructors = data.instructors;
+      }
+    } catch(e){}
+  },
+  
+  save() {
+    try {
+      localStorage.setItem("app_cache_v2", JSON.stringify({
+        courses: this.courses,
+        lessons: this.lessons,
+        // materials çok büyük olduğu için LocalStorage'a kaydetmiyoruz (Kota aşımını önler)
+        // Sadece RAM'de (bellekte) tutulur.
+        instructors: this.instructors
+      }));
+    } catch (err) {
+      console.warn("Önbellek boyutu aşıldı, kayıt atlandı.");
+    }
+  },
+  
   invalidate(...keys) {
     keys.forEach(k => {
       if (k === "courses") this.courses = null;
@@ -26,12 +52,13 @@ const cache = {
       else if (k.startsWith("lessons:")) delete this.lessons[k.slice(8)];
       else if (k.startsWith("material:")) delete this.materials[k.slice(9)];
     });
+    this.save();
   }
 };
 
 let quill = null;
 
-// ---------- Akıllı yükleyici (250ms gecikmeli) ----------
+// ---------- Akıllı yükleyici ----------
 let loaderCount = 0;
 let loaderTimer = null;
 function showLoader(on) {
@@ -40,7 +67,7 @@ function showLoader(on) {
     if (loaderCount === 1) {
       loaderTimer = setTimeout(() => {
         $("#loader").classList.remove("hidden");
-      }, 250);
+      }, 300);
     }
   } else {
     loaderCount = Math.max(0, loaderCount - 1);
@@ -53,9 +80,6 @@ function showLoader(on) {
 
 // ---------- API ----------
 async function api(action, payload = {}, opts = {}) {
-  if (!API_URL || API_URL.includes("BURAYA_GOOGLE")) {
-    throw new Error("API_URL ayarlı değil. app.js içinde API_URL'yi düzenle.");
-  }
   const silent = opts.silent === true;
   if (!silent) showLoader(true);
   try {
@@ -72,7 +96,7 @@ async function api(action, payload = {}, opts = {}) {
   }
 }
 
-// ---------- UI ----------
+// ---------- UI YARDIMCILARI ----------
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
 
@@ -80,7 +104,7 @@ function toast(msg, type = "") {
   const el = $("#toast");
   el.textContent = msg;
   el.className = "toast show " + type;
-  setTimeout(() => el.className = "toast", 2400);
+  setTimeout(() => el.className = "toast", 3000);
 }
 
 function show(viewId) {
@@ -96,7 +120,19 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// ---------- Oturum ----------
+function setBreadcrumbs(paths) {
+  const b = $("#breadcrumbs");
+  b.innerHTML = paths.map((p, i) => {
+    if (i === paths.length - 1) return p;
+    return `<span>${p} / </span>`;
+  }).join(" ");
+}
+
+function setTopbarActions(html) {
+  $("#topbarActions").innerHTML = html;
+}
+
+// ---------- OTURUM ----------
 function saveSession() {
   localStorage.setItem("session", JSON.stringify({ role: state.role, user: state.user }));
 }
@@ -157,87 +193,98 @@ function setupLogout() {
   $("#logoutBtn").addEventListener("click", () => {
     clearSession();
     state.role = null; state.user = null;
-    location.reload();
+    document.body.classList.add("login-mode");
+    show("view-login");
   });
-  $("#brandClick").addEventListener("click", () => {
-    if (state.role === "admin") openAdmin();
-    else openCourses();
+  
+  // Navigation
+  $("#nav-courses").addEventListener("click", (e) => {
+    e.preventDefault();
+    $$(".nav-item").forEach(x => x.classList.remove("active"));
+    $("#nav-courses").classList.add("active");
+    openCourses();
   });
-}
-
-function setupBackButtons() {
-  $$("[data-back]").forEach(b => {
-    b.addEventListener("click", () => {
-      const target = b.dataset.back;
-      if (target === "courses") openCourses();
-      else if (target === "lessons") openLessons(state.currentCourseId, state.currentCourseName);
-      else if (target === "admin") openAdmin();
-    });
-  });
-  $("#backToAdminCourse").addEventListener("click", () => {
-    openAdminCourse(state.currentCourseId, state.currentCourseName);
+  
+  $("#nav-admin").addEventListener("click", (e) => {
+    e.preventDefault();
+    $$(".nav-item").forEach(x => x.classList.remove("active"));
+    $("#nav-admin").classList.add("active");
+    openAdmin();
   });
 }
 
 async function enterApp() {
-  $("#userLabel").textContent = state.user?.name
-    ? `${state.user.name}${state.role === "admin" ? " (Admin)" : ""}`
-    : "";
-  // Tek istekte tüm veriyi çek -> sonraki navigasyon anında olur
-  await bootstrap();
+  document.body.classList.remove("login-mode");
+  $("#userLabel").textContent = state.user?.name || "Kullanıcı";
+  if(state.user?.name) {
+    $("#userAvatar").textContent = state.user.name.charAt(0).toUpperCase();
+  }
+  
+  if (state.role === "admin") {
+    $("#nav-admin").classList.remove("hidden");
+  }
+
+  // İlk yüklemede cache'den göster
   if (state.role === "admin") openAdmin();
   else openCourses();
+
+  // Arka planda tüm veriyi çek ve yenile
+  bootstrap().then(() => {
+    // refresh current view
+    if (state.role === "admin" && $("#view-admin").classList.contains("active")) openAdmin();
+    else if ($("#view-courses").classList.contains("active")) openCourses();
+  });
 }
 
 // ============= BOOTSTRAP (toplu yükleme) =============
 async function bootstrap() {
   try {
-    const res = await api("bootstrap", { role: state.role });
+    const res = await api("bootstrap", { role: state.role }, { silent: true });
     cache.courses    = res.courses || [];
     cache.lessons    = res.lessonsByCourse || {};
     cache.materials  = res.materialsByLesson || {};
     if (res.instructors) cache.instructors = res.instructors;
+    cache.save();
   } catch (e) {
-    // Backend güncellenmemişse veya hata olursa eski akış devreye girer
-    console.warn("Bootstrap atlandı:", e.message);
+    console.warn("Bootstrap hatası:", e.message);
   }
 }
 
-// ============= EĞİTMEN AKIŞI (cache'li) =============
+// ============= EĞİTMEN AKIŞI (Kodland Style) =============
 
 async function openCourses() {
   show("view-courses");
-  // 1) Cache varsa anında göster
+  setBreadcrumbs(["Mena", "Kurslarımız"]);
+  setTopbarActions("");
+  $$(".nav-item").forEach(x => x.classList.remove("active"));
+  $("#nav-courses").classList.add("active");
+
   if (cache.courses) {
     renderCourses(cache.courses);
-    // 2) Arka planda sessizce yenile
-    api("getCourses", {}, { silent: true })
-      .then(res => {
-        cache.courses = res.data;
-        renderCourses(res.data);
-      }).catch(() => {});
     return;
   }
-  // İlk yükleme
   try {
     const res = await api("getCourses");
     cache.courses = res.data;
+    cache.save();
     renderCourses(res.data);
   } catch (e) { toast(e.message, "error"); }
 }
 
 function renderCourses(list) {
-  const grid = $("#coursesGrid");
-  if (!list.length) { grid.innerHTML = `<p class="muted">Henüz kurs eklenmemiş.</p>`; return; }
-  grid.innerHTML = list.map(c => `
-    <div class="course-card" data-id="${c.id}">
-      <h3>${escapeHtml(c.name)}</h3>
-      <p>${escapeHtml(c.description || "")}</p>
+  const wrap = $("#coursesList");
+  if (!list.length) { wrap.innerHTML = `<p class="muted">Henüz kurs eklenmemiş.</p>`; return; }
+  
+  wrap.innerHTML = list.map(c => `
+    <div class="list-item" data-id="${c.id}">
+      <div class="list-item-title"><span class="icon">📁</span> ${escapeHtml(c.name)}</div>
+      <div class="list-item-meta">${escapeHtml(c.description || "Açıklama bulunmuyor.")} • ${c.id.slice(0,4).toUpperCase()} kodlu kurs</div>
     </div>
   `).join("");
-  grid.querySelectorAll(".course-card").forEach(card => {
-    card.addEventListener("click", () => {
-      const c = list.find(x => x.id === card.dataset.id);
+  
+  wrap.querySelectorAll(".list-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const c = list.find(x => x.id === item.dataset.id);
       openLessons(c.id, c.name);
     });
   });
@@ -247,18 +294,18 @@ async function openLessons(courseId, courseName) {
   state.currentCourseId = courseId;
   state.currentCourseName = courseName;
   show("view-lessons");
+  setBreadcrumbs(["Mena", "Kurslarımız", courseName]);
+  setTopbarActions(`<button class="btn btn-back" onclick="openCourses()">← Geri Dön</button>`);
   $("#lessonsTitle").textContent = courseName;
 
   if (cache.lessons[courseId]) {
     renderLessons(cache.lessons[courseId]);
-    api("getLessons", { courseId }, { silent: true })
-      .then(res => { cache.lessons[courseId] = res.data; renderLessons(res.data); })
-      .catch(() => {});
     return;
   }
   try {
     const res = await api("getLessons", { courseId });
     cache.lessons[courseId] = res.data;
+    cache.save();
     renderLessons(res.data);
   } catch (e) { toast(e.message, "error"); }
 }
@@ -266,13 +313,15 @@ async function openLessons(courseId, courseName) {
 function renderLessons(list) {
   const wrap = $("#lessonsList");
   if (!list.length) { wrap.innerHTML = `<p class="muted">Bu kursta henüz ders yok.</p>`; return; }
+  
   wrap.innerHTML = list.map((l, i) => `
-    <div class="lesson-item" data-id="${l.id}" data-title="${escapeHtml(l.title)}">
-      <div><span class="num">${i + 1}</span><strong>${escapeHtml(l.title)}</strong></div>
-      <span style="color:var(--muted);font-size:13px;">→</span>
+    <div class="list-item" data-id="${l.id}" data-title="${escapeHtml(l.title)}">
+      <div class="list-item-title"><span class="icon">📄</span> ${escapeHtml(l.title)}</div>
+      <div class="list-item-meta">Sıra: ${i + 1} • Görüntülemek için tıklayın</div>
     </div>
   `).join("");
-  wrap.querySelectorAll(".lesson-item").forEach(item => {
+  
+  wrap.querySelectorAll(".list-item").forEach(item => {
     item.addEventListener("click", () => openMaterial(item.dataset.id, item.dataset.title));
   });
 }
@@ -281,27 +330,21 @@ async function openMaterial(lessonId, title) {
   state.currentLessonId = lessonId;
   state.currentLessonTitle = title;
   show("view-material");
+  setBreadcrumbs(["Mena", "Kurslarımız", state.currentCourseName, title]);
+  setTopbarActions(`<button class="btn btn-back" onclick="openLessons(state.currentCourseId, state.currentCourseName)">← Derslere Dön</button>`);
+  
   $("#materialTitle").textContent = title;
 
   if (cache.materials[lessonId]) {
     const m = cache.materials[lessonId];
-    $("#materialContent").innerHTML = m.content ||
-      `<p class="muted">Bu ders için henüz materyal eklenmemiş.</p>`;
-    api("getMaterials", { lessonId }, { silent: true })
-      .then(res => {
-        cache.materials[lessonId] = res.data || {};
-        const c = (res.data && res.data.content) || "";
-        $("#materialContent").innerHTML = c ||
-          `<p class="muted">Bu ders için henüz materyal eklenmemiş.</p>`;
-      }).catch(() => {});
+    $("#materialContent").innerHTML = m.content || `<p class="muted">İçerik bulunamadı.</p>`;
     return;
   }
   try {
     const res = await api("getMaterials", { lessonId });
     cache.materials[lessonId] = res.data || {};
-    const html = (res.data && res.data.content) ||
-      `<p class="muted">Bu ders için henüz materyal eklenmemiş.</p>`;
-    $("#materialContent").innerHTML = html;
+    cache.save();
+    $("#materialContent").innerHTML = (res.data && res.data.content) || `<p class="muted">İçerik bulunamadı.</p>`;
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -322,32 +365,34 @@ function setupAdminTabs() {
 
 async function openAdmin() {
   show("view-admin");
+  setBreadcrumbs(["Yönetim", "Admin Paneli"]);
+  setTopbarActions("");
+  
   $$("#view-admin .tab").forEach(x => x.classList.remove("active"));
   $$(".admin-tab").forEach(x => x.classList.remove("active"));
   $('[data-admintab="courses"]').classList.add("active");
   $("#admin-courses").classList.add("active");
+  
   await loadAdminCourses();
 }
 
 async function loadAdminCourses() {
-  // Cache varsa anında göster, arka planda yenile
   if (cache.courses) {
     renderAdminCourses(cache.courses);
-    api("getCourses", {}, { silent: true })
-      .then(res => { cache.courses = res.data; renderAdminCourses(res.data); })
-      .catch(() => {});
     return;
   }
   try {
     const res = await api("getCourses");
     cache.courses = res.data;
+    cache.save();
     renderAdminCourses(res.data);
   } catch (e) { toast(e.message, "error"); }
 }
 
 function renderAdminCourses(list) {
   const wrap = $("#adminCoursesList");
-  if (!list.length) { wrap.innerHTML = `<p class="muted">Henüz kurs yok. Yukarıdan ekleyebilirsin.</p>`; return; }
+  if (!list.length) { wrap.innerHTML = `<p class="muted">Kayıtlı kurs bulunamadı.</p>`; return; }
+  
   wrap.innerHTML = list.map(c => `
     <div class="admin-row" data-id="${c.id}">
       <div class="info">
@@ -355,7 +400,7 @@ function renderAdminCourses(list) {
         <small>${escapeHtml(c.description || "")}</small>
       </div>
       <div class="actions">
-        <button class="btn btn-primary btn-sm" data-act="open">Dersler</button>
+        <button class="btn btn-primary btn-sm" data-act="open">Yönet</button>
         <button class="btn btn-ghost btn-sm" data-act="edit">Düzenle</button>
         <button class="btn btn-danger btn-sm" data-act="delete">Sil</button>
       </div>
@@ -411,6 +456,9 @@ async function openAdminCourse(courseId, courseName) {
   state.currentCourseId = courseId;
   state.currentCourseName = courseName;
   show("view-admin-course");
+  setBreadcrumbs(["Yönetim", "Kurs Detayı", courseName]);
+  setTopbarActions(`<button class="btn btn-back" onclick="openAdmin()">← Geri Dön</button>`);
+  
   $("#adminCourseTitle").textContent = courseName + " - Dersler";
   await loadAdminLessons();
 }
@@ -419,14 +467,12 @@ async function loadAdminLessons() {
   const courseId = state.currentCourseId;
   if (cache.lessons[courseId]) {
     renderAdminLessons(cache.lessons[courseId]);
-    api("getLessons", { courseId }, { silent: true })
-      .then(res => { cache.lessons[courseId] = res.data; renderAdminLessons(res.data); })
-      .catch(() => {});
     return;
   }
   try {
     const res = await api("getLessons", { courseId });
     cache.lessons[courseId] = res.data;
+    cache.save();
     renderAdminLessons(res.data);
   } catch (e) { toast(e.message, "error"); }
 }
@@ -434,6 +480,7 @@ async function loadAdminLessons() {
 function renderAdminLessons(list) {
   const wrap = $("#adminLessonsList");
   if (!list.length) { wrap.innerHTML = `<p class="muted">Henüz ders yok.</p>`; return; }
+  
   wrap.innerHTML = list.map((l, i) => `
     <div class="admin-row" data-id="${l.id}">
       <div class="info">
@@ -492,23 +539,24 @@ function setupAddLesson() {
   });
 }
 
-// ============= MATERYAL EDİTÖRÜ =============
+// ============= MATERYAL EDİTÖRÜ (Fotoğraf altı yazı düzeltildi) =============
 
 function ensureQuill() {
   if (quill) return quill;
   quill = new Quill('#materialEditor', {
     theme: 'snow',
-    placeholder: 'Buraya ders içeriğini yaz... Yazıyı seç, üstteki butonlardan kalın/italik/başlık/liste yap.',
+    placeholder: 'İçeriği yazmaya başla... Resim eklerseniz altına yazı yazabilmek için ekstra butonu kullanın.',
     modules: {
       toolbar: [
-        [{ 'header': [1, 2, 3, false] }],
+        [{ 'font': [] }, { 'size': ['small', false, 'large', 'huge'] }],
+        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
         ['bold', 'italic', 'underline', 'strike'],
         [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-        [{ 'align': [] }],
-        [{ 'indent': '-1' }, { 'indent': '+1' }],
+        [{ 'script': 'sub'}, { 'script': 'super' }],
+        [{ 'list': 'ordered'}, { 'list': 'bullet' }, { 'indent': '-1'}, { 'indent': '+1' }],
+        [{ 'direction': 'rtl' }, { 'align': [] }],
         ['blockquote', 'code-block'],
-        ['link', 'image'],
+        ['link', 'image', 'video'],
         ['clean']
       ]
     }
@@ -520,63 +568,73 @@ async function openAdminMaterial(lessonId, title) {
   state.currentLessonId = lessonId;
   state.currentLessonTitle = title;
   show("view-admin-material");
+  setBreadcrumbs(["Yönetim", "İçerik Editörü", title]);
+  setTopbarActions(`
+    <button id="previewBtn" class="btn btn-ghost btn-sm">👁 Önizle</button>
+    <button id="saveBtn" class="btn btn-primary btn-sm">💾 Kaydet</button>
+    <button class="btn btn-back" onclick="openAdminCourse(state.currentCourseId, state.currentCourseName)">← Dön</button>
+  `);
+  
   $("#adminMaterialTitle").textContent = title + " - Materyal";
   $("#materialPreview").style.display = "none";
+  $("#materialEditor").style.display = "block";
 
   ensureQuill();
+  
+  // Custom button bindings from topbar
+  $("#saveBtn").addEventListener("click", saveMaterialAction);
+  $("#previewBtn").addEventListener("click", togglePreviewAction);
 
-  // Cache varsa anında doldur
   if (cache.materials[lessonId]) {
     quill.root.innerHTML = cache.materials[lessonId].content || "";
-    api("getMaterials", { lessonId }, { silent: true })
-      .then(res => {
-        cache.materials[lessonId] = res.data || {};
-        // Editör'ü sadece kullanıcı henüz yazmaya başlamadıysa güncelle
-        if (!quill.hasFocus()) quill.root.innerHTML = res.data?.content || "";
-      }).catch(() => {});
     return;
   }
   try {
     const res = await api("getMaterials", { lessonId });
     cache.materials[lessonId] = res.data || {};
+    cache.save();
     quill.root.innerHTML = res.data?.content || "";
   } catch (e) { toast(e.message, "error"); }
 }
 
+async function saveMaterialAction() {
+  if (!quill) return;
+  const html = quill.root.innerHTML;
+  try {
+    await api("saveMaterial", {
+      lessonId: state.currentLessonId,
+      content: html,
+      type: "html"
+    });
+    cache.materials[state.currentLessonId] = { content: html, type: "html" };
+    cache.save();
+    toast("Materyal başarıyla kaydedildi", "success");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function togglePreviewAction() {
+  if (!quill) return;
+  const p = $("#materialPreview");
+  const e = $("#materialEditor");
+  if (p.style.display === "none") {
+    p.innerHTML = quill.root.innerHTML;
+    p.style.display = "block";
+    e.style.display = "none";
+    $("#previewBtn").textContent = "✏️ Düzenle";
+  } else {
+    p.style.display = "none";
+    e.style.display = "block";
+    $("#previewBtn").textContent = "👁 Önizle";
+  }
+}
+
 function setupMaterialEditor() {
-  $("#saveMaterialBtn").addEventListener("click", async () => {
-    if (!quill) return;
-    const html = quill.root.innerHTML;
-    try {
-      await api("saveMaterial", {
-        lessonId: state.currentLessonId,
-        content: html,
-        type: "html"
-      });
-      // Cache'i güncel tut
-      cache.materials[state.currentLessonId] = { content: html, type: "html" };
-      toast("Materyal kaydedildi", "success");
-    } catch (e) { toast(e.message, "error"); }
-  });
-
-  $("#previewMaterialBtn").addEventListener("click", () => {
-    if (!quill) return;
-    const p = $("#materialPreview");
-    if (p.style.display === "none") {
-      p.innerHTML = quill.root.innerHTML;
-      p.style.display = "block";
-      p.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else {
-      p.style.display = "none";
-    }
-  });
-
   $("#insertYoutubeBtn").addEventListener("click", () => {
     if (!quill) return;
-    const url = prompt("YouTube video URL'sini yapıştır:\n(örn. https://www.youtube.com/watch?v=XXXXX)");
+    const url = prompt("YouTube video URL'si:");
     if (!url) return;
     const embedUrl = toYoutubeEmbed(url);
-    if (!embedUrl) { toast("Geçerli bir YouTube linki gir.", "error"); return; }
+    if (!embedUrl) { toast("Geçersiz YouTube linki.", "error"); return; }
     const range = quill.getSelection(true) || { index: quill.getLength() };
     quill.insertEmbed(range.index, 'video', embedUrl, 'user');
     quill.insertText(range.index + 1, '\n', 'user');
@@ -585,7 +643,7 @@ function setupMaterialEditor() {
 
   $("#insertGeniallyBtn").addEventListener("click", () => {
     if (!quill) return;
-    const url = prompt("Genially URL'sini yapıştır:\n(örn. https://view.genial.ly/XXXXXX)");
+    const url = prompt("Genially URL'si:");
     if (!url) return;
     const range = quill.getSelection(true) || { index: quill.getLength() };
     quill.insertEmbed(range.index, 'video', url, 'user');
@@ -595,13 +653,33 @@ function setupMaterialEditor() {
 
   $("#insertPdfBtn").addEventListener("click", () => {
     if (!quill) return;
-    const url = prompt("PDF linkini yapıştır:\n(Google Drive paylaşım linki olabilir)");
+    const url = prompt("PDF/Drive linkini yapıştır:");
     if (!url) return;
     const text = prompt("Görünecek metin:", "📄 Ders Notları (PDF)") || "📄 PDF";
     const range = quill.getSelection(true) || { index: quill.getLength() };
     quill.insertText(range.index, text, { link: url }, 'user');
     quill.insertText(range.index + text.length, '\n', 'user');
     quill.setSelection(range.index + text.length + 1);
+  });
+
+  // GÖRSELİN ALTINA YAZILAMAMA PROBLEMİ İÇİN FIX
+  $("#insertImgBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const url = prompt("Görselin tam URL'sini yapıştır (örn. https://site.com/resim.png):");
+    if (!url) return;
+    
+    // Geçerli bir seçim yoksa sona ekle
+    let range = quill.getSelection();
+    if (!range) range = { index: quill.getLength() };
+    
+    // Görseli ekle
+    quill.insertEmbed(range.index, 'image', url, 'user');
+    // Hemen ardından yeni bir boş paragraf satırı ekle ki altına yazılabilsin
+    quill.insertText(range.index + 1, '\n\n', 'user');
+    // İmleci resmin altındaki yeni satıra konumlandır
+    quill.setSelection(range.index + 2);
+    
+    toast("Resim eklendi. Hemen altından yazmaya devam edebilirsiniz.", "success");
   });
 }
 
@@ -625,14 +703,12 @@ function toYoutubeEmbed(url) {
 async function loadInstructors() {
   if (cache.instructors) {
     renderInstructors(cache.instructors);
-    api("getInstructors", {}, { silent: true })
-      .then(res => { cache.instructors = res.data; renderInstructors(res.data); })
-      .catch(() => {});
     return;
   }
   try {
     const res = await api("getInstructors");
     cache.instructors = res.data;
+    cache.save();
     renderInstructors(res.data);
   } catch (e) { toast(e.message, "error"); }
 }
@@ -640,6 +716,7 @@ async function loadInstructors() {
 function renderInstructors(list) {
   const wrap = $("#adminInstructorsList");
   if (!list.length) { wrap.innerHTML = `<p class="muted">Henüz eğitmen eklenmemiş.</p>`; return; }
+  
   wrap.innerHTML = list.map(u => `
     <div class="admin-row" data-id="${u.id}">
       <div class="info">
@@ -702,9 +779,10 @@ function setupAddInstructor() {
 
 // ============= BAŞLATMA =============
 document.addEventListener("DOMContentLoaded", () => {
+  cache.load(); // İlk açılışta verileri ram'e al
+  
   setupLogin();
   setupLogout();
-  setupBackButtons();
   setupAdminTabs();
   setupAddCourse();
   setupAddLesson();
@@ -712,5 +790,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupAddInstructor();
 
   if (loadSession()) enterApp();
-  else show("view-login");
+  else {
+    document.body.classList.add("login-mode");
+    show("view-login");
+  }
 });
