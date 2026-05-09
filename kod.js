@@ -18,8 +18,7 @@ const SHEETS_SCHEMA = {
   Instructors: ["id", "name", "email", "password", "createdAt"],
   Courses:     ["id", "name", "description", "createdAt"],
   Lessons:     ["id", "courseId", "title", "order", "createdAt"],
-  Materials:   ["id", "lessonId", "content", "type", "ownerId", "updatedAt"],
-  Comments:    ["id", "lessonId", "userId", "userName", "text", "createdAt"]
+  Materials:   ["id", "lessonId", "content", "type"]
 };
 
 // ====================== KURULUM (manuel çalıştır) ======================
@@ -92,11 +91,6 @@ function doPost(e) {
 
       // Materials
       case "saveMaterial": _checkAuth(params.token, "admin"); result = saveMaterial(params); break;
-      case "updateMaterialOwner": _checkAuth(params.token, "admin"); result = updateMaterialOwner(params); break;
-
-      // Comments
-      case "getComments":    _checkAuth(params.token); result = { ok: true, data: getComments(params.lessonId) }; break;
-      case "addComment":     _checkAuth(params.token); result = addComment(params); break;
 
       // Instructors
       case "addInstructor":    _checkAuth(params.token, "admin"); result = addInstructor(params); break;
@@ -266,7 +260,7 @@ function bootstrap({ role }) {
   const materialsByLesson = {};
   _rows("Materials").forEach(m => {
     materialsByLesson[m.lessonId] = {
-      id: m.id, lessonId: m.lessonId, content: m.content, type: m.type || "html", ownerId: m.ownerId || "", updatedAt: m.updatedAt || ""
+      id: m.id, lessonId: m.lessonId, content: m.content, type: m.type || "html"
     };
   });
 
@@ -367,8 +361,8 @@ function deleteLesson({ id }) {
 
 function getMaterials(lessonId) {
   const m = _rows("Materials").find(x => x.lessonId === lessonId);
-  if (!m) return { lessonId, content: "", type: "html", ownerId: "", updatedAt: "" };
-  return { id: m.id, lessonId: m.lessonId, content: m.content, type: m.type || "html", ownerId: m.ownerId || "", updatedAt: m.updatedAt || "" };
+  if (!m) return { lessonId, content: "", type: "html" };
+  return { id: m.id, lessonId: m.lessonId, content: m.content, type: m.type || "html" };
 }
 
 function saveMaterial({ lessonId, content, type }) {
@@ -377,41 +371,11 @@ function saveMaterial({ lessonId, content, type }) {
   if (existing) {
     sh.getRange(existing._row, 3).setValue(content || "");
     sh.getRange(existing._row, 4).setValue(type || "html");
-    sh.getRange(existing._row, 6).setValue(_now());
   } else {
-    sh.appendRow([_newId(), lessonId, content || "", type || "html", "", _now()]);
+    sh.appendRow([_newId(), lessonId, content || "", type || "html"]);
   }
   _invalidateCache("Materials");
   return { ok: true };
-}
-
-function updateMaterialOwner({ lessonId, ownerId }) {
-  const sh = _sheet("Materials");
-  const existing = _rows("Materials").find(x => x.lessonId === lessonId);
-  if (existing) {
-    sh.getRange(existing._row, 5).setValue(ownerId || "");
-    sh.getRange(existing._row, 6).setValue(_now());
-  } else {
-    sh.appendRow([_newId(), lessonId, "", "html", ownerId || "", _now()]);
-  }
-  _invalidateCache("Materials");
-  return { ok: true };
-}
-
-// ====================== COMMENTS ======================
-
-function getComments(lessonId) {
-  return _rows("Comments").filter(x => x.lessonId === lessonId).map(c => ({
-    id: c.id, lessonId: c.lessonId, userId: c.userId, userName: c.userName, text: c.text, createdAt: c.createdAt
-  }));
-}
-
-function addComment({ lessonId, userId, userName, text }) {
-  const sh = _sheet("Comments");
-  const id = _newId();
-  sh.appendRow([id, lessonId, userId, userName, text, _now()]);
-  _invalidateCache("Comments");
-  return { ok: true, id };
 }
 
 // ====================== INSTRUCTORS ======================

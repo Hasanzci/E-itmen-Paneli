@@ -123,9 +123,13 @@ function escapeHtml(s) {
 function setBreadcrumbs(paths) {
   const b = $("#breadcrumbs");
   b.innerHTML = paths.map((p, i) => {
-    if (i === paths.length - 1) return p;
-    return `<span>${p} / </span>`;
-  }).join(" ");
+    let label = p;
+    let action = "";
+    if (typeof p === "object") { label = p.label; action = p.action; }
+    if (i === paths.length - 1) return `<span>${escapeHtml(label)}</span>`;
+    if (action) return `<a href="#" onclick="${action}; return false;" style="color:var(--text-muted); text-decoration:none;" class="breadcrumb-link">${escapeHtml(label)}</a> <span style="color:var(--border)">/</span> `;
+    return `<span style="color:var(--text-muted)">${escapeHtml(label)} <span style="color:var(--border)">/</span> </span>`;
+  }).join("");
 }
 
 function setTopbarActions(html) {
@@ -257,7 +261,7 @@ async function bootstrap() {
 
 async function openCourses() {
   show("view-courses");
-  setBreadcrumbs(["Mena", "Kurslarımız"]);
+  setBreadcrumbs([{label: "Ana Sayfa", action: "openCourses()"}, "Kurslarımız"]);
   setTopbarActions("");
   $$(".nav-item").forEach(x => x.classList.remove("active"));
   $("#nav-courses").classList.add("active");
@@ -278,26 +282,34 @@ function renderCourses(list) {
   const wrap = $("#coursesList");
   if (!list.length) { wrap.innerHTML = `<p class="muted">Henüz kurs eklenmemiş.</p>`; return; }
   
-  wrap.innerHTML = list.map(c => `
-    <div class="list-item" data-id="${c.id}">
-      <div class="list-item-title"><span class="icon">📁</span> ${escapeHtml(c.name)}</div>
-      <div class="list-item-meta">${escapeHtml(c.description || "Açıklama bulunmuyor.")} • ${c.id.slice(0,4).toUpperCase()} kodlu kurs</div>
-    </div>
-  `).join("");
-  
-  wrap.querySelectorAll(".list-item").forEach(item => {
-    item.addEventListener("click", () => {
-      const c = list.find(x => x.id === item.dataset.id);
-      openLessons(c.id, c.name);
+  const draw = (filterTxt = "") => {
+    const filtered = list.filter(c => c.name.toLowerCase().includes(filterTxt.toLowerCase()) || (c.description || "").toLowerCase().includes(filterTxt.toLowerCase()));
+    if (!filtered.length) { wrap.innerHTML = `<p class="muted">Arama sonucu bulunamadı.</p>`; return; }
+    wrap.innerHTML = filtered.map(c => `
+      <div class="list-item" data-id="${c.id}">
+        <div class="list-item-title"><span class="icon">📁</span> ${escapeHtml(c.name)}</div>
+        <div class="list-item-meta">${escapeHtml(c.description || "Açıklama bulunmuyor.")} • ${c.id.slice(0,4).toUpperCase()} kodlu kurs</div>
+      </div>
+    `).join("");
+    wrap.querySelectorAll(".list-item").forEach(item => {
+      item.addEventListener("click", () => {
+        const c = list.find(x => x.id === item.dataset.id);
+        openLessons(c.id, c.name);
+      });
     });
-  });
+  };
+  draw();
+  const searchInput = $("#courseSearch");
+  if(searchInput) {
+    searchInput.oninput = (e) => draw(e.target.value);
+  }
 }
 
 async function openLessons(courseId, courseName) {
   state.currentCourseId = courseId;
   state.currentCourseName = courseName;
   show("view-lessons");
-  setBreadcrumbs(["Mena", "Kurslarımız", courseName]);
+  setBreadcrumbs([{label: "Ana Sayfa", action: "openCourses()"}, {label: "Kurslarımız", action: "openCourses()"}, courseName]);
   setTopbarActions(`<button class="btn btn-back" onclick="openCourses()">← Geri Dön</button>`);
   $("#lessonsTitle").textContent = courseName;
 
@@ -317,38 +329,197 @@ function renderLessons(list) {
   const wrap = $("#lessonsList");
   if (!list.length) { wrap.innerHTML = `<p class="muted">Bu kursta henüz ders yok.</p>`; return; }
   
-  wrap.innerHTML = list.map((l, i) => `
-    <div class="list-item" data-id="${l.id}" data-title="${escapeHtml(l.title)}">
-      <div class="list-item-title"><span class="icon">📄</span> ${escapeHtml(l.title)}</div>
-      <div class="list-item-meta">Sıra: ${i + 1} • Görüntülemek için tıklayın</div>
-    </div>
-  `).join("");
+  const readKey = "read_" + (state.user ? state.user.id : "anon");
+  const readData = JSON.parse(localStorage.getItem(readKey) || "{}");
   
-  wrap.querySelectorAll(".list-item").forEach(item => {
-    item.addEventListener("click", () => openMaterial(item.dataset.id, item.dataset.title));
-  });
+  const draw = (filterTxt = "") => {
+    const filtered = list.filter(l => l.title.toLowerCase().includes(filterTxt.toLowerCase()));
+    if (!filtered.length) { wrap.innerHTML = `<p class="muted">Arama sonucu bulunamadı.</p>`; return; }
+    
+    wrap.innerHTML = filtered.map((l, i) => {
+      const isRead = readData[l.id];
+      return `
+        <div class="list-item" data-id="${l.id}" data-title="${escapeHtml(l.title)}">
+          <div class="list-item-title" style="display:flex; align-items:center; width:100%;">
+            <span class="icon" style="margin-right:8px;">📄</span> ${escapeHtml(l.title)}
+            ${isRead ? '<span style="font-size:11px; color:var(--success); background:rgba(38,135,146,0.1); padding:2px 6px; border-radius:4px; margin-left:auto;">✓ Okundu</span>' : ''}
+          </div>
+          <div class="list-item-meta">Sıra: ${i + 1} • Görüntülemek için tıklayın</div>
+        </div>
+      `;
+    }).join("");
+    
+    wrap.querySelectorAll(".list-item").forEach(item => {
+      item.addEventListener("click", () => openMaterial(item.dataset.id, item.dataset.title));
+    });
+  };
+  draw();
+  const searchInput = $("#lessonSearch");
+  if(searchInput) {
+    searchInput.oninput = (e) => draw(e.target.value);
+  }
 }
 
 async function openMaterial(lessonId, title) {
   state.currentLessonId = lessonId;
   state.currentLessonTitle = title;
   show("view-material");
-  setBreadcrumbs(["Mena", "Kurslarımız", state.currentCourseName, title]);
-  setTopbarActions(`<button class="btn btn-back" onclick="openLessons(state.currentCourseId, state.currentCourseName)">← Derslere Dön</button>`);
+  setBreadcrumbs([
+    {label: "Ana Sayfa", action: "openCourses()"}, 
+    {label: "Kurslarımız", action: "openCourses()"}, 
+    {label: state.currentCourseName, action: `openLessons('${state.currentCourseId}', '${state.currentCourseName.replace(/'/g, "\\'")}')`}, 
+    title
+  ]);
+  
+  let topActions = `<button class="btn btn-ghost btn-sm" onclick="openShareModal()">🔗 Paylaş</button>`;
+  topActions += `<button class="btn btn-back" onclick="openLessons(state.currentCourseId, state.currentCourseName)" style="margin-left:8px;">← Derslere Dön</button>`;
+  setTopbarActions(topActions);
   
   $("#materialTitle").textContent = title;
+  
+  const readKey = "read_" + (state.user ? state.user.id : "anon");
+  const readData = JSON.parse(localStorage.getItem(readKey) || "{}");
+  readData[lessonId] = true;
+  localStorage.setItem(readKey, JSON.stringify(readData));
 
   if (cache.materials[lessonId]) {
-    const m = cache.materials[lessonId];
-    $("#materialContent").innerHTML = m.content || `<p class="muted">İçerik bulunamadı.</p>`;
+    renderMaterialData(cache.materials[lessonId]);
     return;
   }
   try {
     const res = await api("getMaterials", { lessonId });
     cache.materials[lessonId] = res.data || {};
     cache.save();
-    $("#materialContent").innerHTML = (res.data && res.data.content) || `<p class="muted">İçerik bulunamadı.</p>`;
+    renderMaterialData(cache.materials[lessonId]);
   } catch (e) { toast(e.message, "error"); }
+}
+
+function renderMaterialData(m) {
+  $("#materialContent").innerHTML = m.content || `<p class="muted">İçerik bulunamadı.</p>`;
+  
+  if (m.updatedAt) {
+    const d = new Date(m.updatedAt);
+    $("#materialUpdated").textContent = "Son güncelleme: " + d.toLocaleDateString('tr-TR');
+  } else {
+    $("#materialUpdated").textContent = "Son güncelleme: -";
+  }
+  
+  if (m.ownerId) {
+    const owner = (cache.instructors || []).find(x => x.id === m.ownerId);
+    $("#materialOwnerCallout").classList.remove('hidden');
+    $("#materialOwnerName").textContent = "@" + (owner ? owner.name : "Belirtilmedi");
+  } else {
+    $("#materialOwnerCallout").classList.add('hidden');
+  }
+
+  generateTOC();
+  loadComments(state.currentLessonId);
+  setupUnfurling();
+}
+
+function generateTOC() {
+  const content = $("#materialContent");
+  const headers = content.querySelectorAll("h1, h2, h3");
+  const tocList = $("#tocList");
+  tocList.innerHTML = "";
+  
+  if (headers.length === 0) {
+    tocList.innerHTML = '<span class="muted" style="font-size:13px;">Başlık bulunamadı.</span>';
+    return;
+  }
+
+  headers.forEach((h, i) => {
+    if (!h.id) h.id = "h_" + i;
+    const a = document.createElement("a");
+    a.href = "#" + h.id;
+    a.className = "toc-item toc-" + h.tagName.toLowerCase();
+    a.textContent = h.textContent;
+    a.onclick = (e) => {
+      e.preventDefault();
+      h.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    tocList.appendChild(a);
+  });
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        $$(".toc-item").forEach(a => a.classList.remove("active"));
+        const id = entry.target.id;
+        const link = tocList.querySelector(`a[href="#${id}"]`);
+        if (link) link.classList.add("active");
+      }
+    });
+  }, { rootMargin: "0px 0px -80% 0px" });
+
+  headers.forEach(h => observer.observe(h));
+}
+
+function setupUnfurling() {
+  $$("#materialContent a").forEach(a => {
+    const href = a.href;
+    if (a.classList.contains("unfurled") || a.closest('iframe') || a.closest('.embed-card')) return;
+    
+    const isStandalone = a.textContent.trim() === href.trim() || a.parentNode.textContent.trim() === a.textContent.trim();
+    
+    if (href.includes("scratch.mit.edu/projects/") && isStandalone) {
+      const match = href.match(/projects\/(\d+)/);
+      if (match) {
+        a.classList.add("unfurled");
+        const embedHtml = `
+          <div class="embed-card">
+            <a href="${href}" target="_blank" class="embed-card-header">🐱 Scratch Projesi #${match[1]} - Açmak için tıkla</a>
+            <iframe src="https://scratch.mit.edu/projects/${match[1]}/embed" allowtransparency="true" frameborder="0" scrolling="no" allowfullscreen></iframe>
+          </div>
+        `;
+        a.insertAdjacentHTML("afterend", embedHtml);
+        a.style.display = 'none';
+      }
+    } else if (isStandalone) {
+      try {
+        const url = new URL(href);
+        const domain = url.hostname;
+        a.classList.add("unfurled");
+        const embedHtml = `
+          <a href="${href}" target="_blank" class="generic-link-card" style="display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:8px; margin:8px 0; text-decoration:none; background:var(--bg-card); transition:all 0.2s;">
+            <img src="https://www.google.com/s2/favicons?domain=${domain}" style="width:24px; height:24px; border-radius:4px;" />
+            <div style="display:flex; flex-direction:column;">
+              <strong style="color:var(--text-main); font-size:14px;">Ziyaret et: ${domain}</strong>
+              <small style="color:var(--text-muted); font-size:12px;">${href.length > 50 ? href.substring(0,50)+'...' : href}</small>
+            </div>
+          </a>
+        `;
+        a.insertAdjacentHTML("afterend", embedHtml);
+        a.style.display = "none";
+      } catch(e) {}
+    }
+  });
+}
+
+async function loadComments(lessonId) {
+  const list = $("#commentsList");
+  list.innerHTML = `<span class="muted" style="font-size:13px;">Yorumlar yükleniyor...</span>`;
+  try {
+    const res = await api("getComments", { lessonId }, { silent: true });
+    if (!res.data || res.data.length === 0) {
+      list.innerHTML = `<span class="muted" style="font-size:13px;">İlk yorumu siz yapın.</span>`;
+      return;
+    }
+    list.innerHTML = res.data.map(c => `
+      <div class="comment-item">
+        <div class="comment-avatar">${(c.userName || "U")[0].toUpperCase()}</div>
+        <div class="comment-body">
+          <div class="comment-meta">
+            <span class="comment-author">${escapeHtml(c.userName)}</span>
+            <span title="${new Date(c.createdAt).toLocaleString()}">${new Date(c.createdAt).toLocaleDateString('tr-TR')}</span>
+          </div>
+          <div class="comment-text">${escapeHtml(c.text)}</div>
+        </div>
+      </div>
+    `).join("");
+  } catch (e) {
+    list.innerHTML = `<span class="error">Yorumlar yüklenemedi.</span>`;
+  }
 }
 
 // ============= ADMIN AKIŞI =============
@@ -463,8 +634,11 @@ async function openAdminCourse(courseId, courseName) {
   state.currentCourseId = courseId;
   state.currentCourseName = courseName;
   show("view-admin-course");
-  setBreadcrumbs(["Yönetim", "Kurs Detayı", courseName]);
-  setTopbarActions(`<button class="btn btn-back" onclick="openAdmin()">← Geri Dön</button>`);
+  setBreadcrumbs([{label: "Yönetim", action: "openAdmin()"}, {label: "Kurs Detayı", action: ""}, courseName]);
+  setTopbarActions(`
+    <button class="btn btn-ghost btn-sm" onclick="openModal('newDocModal')">📄 + Yeni Belge</button>
+    <button class="btn btn-back" onclick="openAdmin()" style="margin-left:8px;">← Geri Dön</button>
+  `);
   
   $("#adminCourseTitle").textContent = courseName + " - Dersler";
   await loadAdminLessons();
@@ -550,19 +724,24 @@ function setupAddLesson() {
 
 function ensureQuill() {
   if (quill) return quill;
+
+  const BlockEmbed = Quill.import('blots/block/embed');
+  class DividerBlot extends BlockEmbed {
+    static create() { return super.create(); }
+  }
+  DividerBlot.blotName = 'divider';
+  DividerBlot.tagName = 'hr';
+  Quill.register(DividerBlot);
+
   quill = new Quill('#materialEditor', {
-    theme: 'snow',
-    placeholder: 'İçeriği yazmaya başla... Resim eklerseniz altına yazı yazabilmek için ekstra butonu kullanın.',
+    theme: 'bubble',
+    placeholder: 'İçeriği yazmaya başla... Metni seçtiğinizde biçimlendirme menüsü açılır.',
     modules: {
       toolbar: [
-        [{ 'font': [] }, { 'size': ['small', false, 'large', 'huge'] }],
-        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
         ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'script': 'sub'}, { 'script': 'super' }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }, { 'indent': '-1'}, { 'indent': '+1' }],
-        [{ 'direction': 'rtl' }, { 'align': [] }],
+        [{ 'header': [1, 2, 3, false] }],
         ['blockquote', 'code-block'],
+        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
         ['link', 'image', 'video'],
         ['clean']
       ]
@@ -575,7 +754,11 @@ async function openAdminMaterial(lessonId, title) {
   state.currentLessonId = lessonId;
   state.currentLessonTitle = title;
   show("view-admin-material");
-  setBreadcrumbs(["Yönetim", "İçerik Editörü", title]);
+  setBreadcrumbs([
+    {label: "Yönetim", action: "openAdmin()"}, 
+    {label: "Kurs Detayı", action: `openAdminCourse('${state.currentCourseId}', '${state.currentCourseName.replace(/'/g, "\\'")}')`},
+    title
+  ]);
   setTopbarActions(`
     <button id="previewBtn" class="btn btn-ghost btn-sm">👁 Önizle</button>
     <button id="saveBtn" class="btn btn-primary btn-sm">💾 Kaydet</button>
@@ -636,6 +819,42 @@ function togglePreviewAction() {
 }
 
 function setupMaterialEditor() {
+  $("#insertH1Btn").addEventListener("click", () => {
+    if (!quill) return;
+    const range = quill.getSelection(true);
+    quill.formatLine(range.index, range.length, 'header', 1);
+  });
+  
+  $("#insertH2Btn").addEventListener("click", () => {
+    if (!quill) return;
+    const range = quill.getSelection(true);
+    quill.formatLine(range.index, range.length, 'header', 2);
+  });
+  
+  $("#insertDividerBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertEmbed(range.index, 'divider', true, 'user');
+    quill.setSelection(range.index + 1);
+  });
+  
+  $("#insertCalloutBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertText(range.index, '💡 Bilgi: ', 'bold', true);
+    quill.formatLine(range.index, 1, 'blockquote', true);
+    quill.setSelection(range.index + 9);
+  });
+
+  $("#insertDurationBtn").addEventListener("click", () => {
+    if (!quill) return;
+    const duration = prompt("Süre (örn. 10 Dakika):");
+    if (!duration) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertText(range.index, '⏱ ' + duration + ' ', 'bold', true);
+    quill.setSelection(range.index + duration.length + 3);
+  });
+
   $("#insertYoutubeBtn").addEventListener("click", () => {
     if (!quill) return;
     const url = prompt("YouTube video URL'si:");
@@ -669,23 +888,15 @@ function setupMaterialEditor() {
     quill.setSelection(range.index + text.length + 1);
   });
 
-  // GÖRSELİN ALTINA YAZILAMAMA PROBLEMİ İÇİN FIX
   $("#insertImgBtn").addEventListener("click", () => {
     if (!quill) return;
     const url = prompt("Görselin tam URL'sini yapıştır (örn. https://site.com/resim.png):");
     if (!url) return;
-    
-    // Geçerli bir seçim yoksa sona ekle
     let range = quill.getSelection();
     if (!range) range = { index: quill.getLength() };
-    
-    // Görseli ekle
     quill.insertEmbed(range.index, 'image', url, 'user');
-    // Hemen ardından yeni bir boş paragraf satırı ekle ki altına yazılabilsin
     quill.insertText(range.index + 1, '\n\n', 'user');
-    // İmleci resmin altındaki yeni satıra konumlandır
     quill.setSelection(range.index + 2);
-    
     toast("Resim eklendi. Hemen altından yazmaya devam edebilirsiniz.", "success");
   });
 }
@@ -800,5 +1011,99 @@ document.addEventListener("DOMContentLoaded", () => {
   else {
     document.body.classList.add("login-mode");
     show("view-login");
+  }
+});
+
+// ============= MODALS & YORUM =============
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('hidden');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hidden');
+}
+function copyShareLink() {
+  const input = document.getElementById('shareLinkInput');
+  input.select();
+  document.execCommand('copy');
+  toast('Bağlantı kopyalandı', 'success');
+}
+
+function openShareModal() {
+  $('#shareLinkInput').value = window.location.origin + window.location.pathname + "#lesson=" + state.currentLessonId;
+  if (state.role === 'admin') {
+    $('#adminShareOptions').style.display = 'block';
+    const sel = $('#ownerSelect');
+    sel.innerHTML = `<option value="">-- Sorumlu Yok --</option>` + 
+      (cache.instructors || []).map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
+    
+    const m = cache.materials[state.currentLessonId];
+    if (m && m.ownerId) sel.value = m.ownerId;
+  } else {
+    $('#adminShareOptions').style.display = 'none';
+  }
+  openModal('shareModal');
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById('saveOwnerBtn');
+  if(btn) {
+    btn.addEventListener('click', async () => {
+      const ownerId = $('#ownerSelect').value;
+      try {
+        await api("updateMaterialOwner", { lessonId: state.currentLessonId, ownerId });
+        if(cache.materials[state.currentLessonId]) {
+          cache.materials[state.currentLessonId].ownerId = ownerId;
+        }
+        toast('İçerik sorumlusu güncellendi', 'success');
+        closeModal('shareModal');
+        if (state.currentLessonId) {
+          renderMaterialData(cache.materials[state.currentLessonId]);
+        }
+      } catch(e) {
+        toast(e.message, 'error');
+      }
+    });
+  }
+  
+  const quickForm = document.getElementById('quickAddLessonForm');
+  if(quickForm) {
+    quickForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        await api("addLesson", {
+          courseId: state.currentCourseId,
+          title: $("#quickNewLessonTitle").value
+        });
+        cache.invalidate("lessons:" + state.currentCourseId);
+        $("#quickNewLessonTitle").value = "";
+        toast("Ders eklendi", "success");
+        closeModal('newDocModal');
+        if ($("#view-admin-course").classList.contains("active")) {
+          loadAdminLessons();
+        }
+      } catch (e) { toast(e.message, "error"); }
+    });
+  }
+
+  const commentForm = document.getElementById('commentForm');
+  if(commentForm) {
+    commentForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const input = $("#commentInput");
+      const text = input.value.trim();
+      if (!text) return;
+      try {
+        await api("addComment", {
+          lessonId: state.currentLessonId,
+          userId: state.user.id || "admin",
+          userName: state.user.name,
+          text
+        });
+        input.value = "";
+        loadComments(state.currentLessonId);
+      } catch(e) { toast(e.message, "error"); }
+    });
   }
 });

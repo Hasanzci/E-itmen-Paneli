@@ -375,6 +375,95 @@ body.login-mode #app { margin-left: 0; width: 100%; }
 .toast.error { border-bottom: 3px solid var(--danger); }
 .toast.success { border-bottom: 3px solid var(--success); }
 
+/* ============== NOTION STYLE ============== */
+.notion-view { padding: 0 !important; max-width: none !important; }
+.material-layout {
+  display: flex;
+  max-width: 1400px;
+  margin: 0 auto;
+  gap: 40px;
+  padding: 40px;
+}
+.material-toc {
+  width: 260px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 100px;
+  height: calc(100vh - 140px);
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 20px;
+}
+.toc-title { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.toc-item {
+  display: block; color: var(--text-muted); text-decoration: none;
+  font-size: 14px; padding: 6px 8px; border-radius: 6px; margin-bottom: 2px;
+  line-height: 1.4; transition: all 0.2s;
+}
+.toc-item:hover { background: var(--bg-hover); color: var(--text-main); }
+.toc-item.active { background: rgba(130, 58, 175, 0.15); color: var(--primary); font-weight: 500; }
+.toc-h1 { padding-left: 8px; }
+.toc-h2 { padding-left: 20px; font-size: 13.5px; }
+.toc-h3 { padding-left: 32px; font-size: 13px; }
+
+.material-main { flex: 1; max-width: 800px; }
+.material-meta { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+.meta-dot { color: var(--border); }
+
+.callout {
+  display: flex; gap: 16px; padding: 16px 20px; border-radius: 8px; margin: 24px 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+}
+.callout-info { background: rgba(38, 135, 146, 0.1); border-color: rgba(38, 135, 146, 0.3); }
+.callout-icon { font-size: 20px; }
+.callout-content { flex: 1; font-size: 15px; line-height: 1.5; color: #e2e8f0; }
+
+.notion-title { font-size: 40px !important; margin-bottom: 32px !important; font-weight: 700; line-height: 1.2; }
+
+/* H1/H2/H3 Badges in material */
+.notion-material h1, .notion-material h2, .notion-material h3 { position: relative; }
+.notion-material h1::before { content: "H1"; position: absolute; left: -40px; top: 8px; font-size: 12px; color: var(--text-muted); font-weight: 600; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; opacity: 0.5; }
+.notion-material h2::before { content: "H2"; position: absolute; left: -40px; top: 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; opacity: 0.5; }
+.notion-material h3::before { content: "H3"; position: absolute; left: -40px; top: 4px; font-size: 12px; color: var(--text-muted); font-weight: 600; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; opacity: 0.5; }
+
+/* Comments */
+.comments-section { margin-top: 60px; border-top: 1px solid var(--border); padding-top: 32px; }
+.comments-title { font-size: 20px; margin-bottom: 24px; }
+.comment-item { display: flex; gap: 12px; margin-bottom: 20px; }
+.comment-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
+.comment-body { background: var(--bg-card); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); flex: 1; }
+.comment-meta { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; color: var(--text-muted); }
+.comment-author { font-weight: 600; color: var(--text-main); }
+.comment-text { font-size: 15px; line-height: 1.5; color: #e2e8f0; }
+.comment-form { display: flex; gap: 12px; margin-top: 24px; }
+.comment-form input { flex: 1; padding: 12px 16px; background: var(--bg-main); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main); }
+.comment-form input:focus { border-color: var(--primary); outline: none; }
+
+/* Modals */
+.modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; }
+.modal-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+.modal-content { position: relative; background: var(--bg-card); width: 100%; max-width: 480px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 20px 40px rgba(0,0,0,0.5); z-index: 10; overflow: hidden; }
+.modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { font-size: 20px; margin: 0; }
+.modal-body { padding: 24px; }
+.modal-body label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
+.share-link-box { display: flex; gap: 8px; }
+.share-link-box input { flex: 1; padding: 10px 12px; background: var(--bg-main); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); font-size: 14px; }
+
+/* Custom Embed Card */
+.embed-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 16px 0;
+  background: var(--bg-card);
+  transition: transform 0.2s;
+}
+.embed-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+.embed-card-header { padding: 12px 16px; background: var(--bg-hover); font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); color: #fff; text-decoration: none; }
+.embed-card-header:hover { text-decoration: underline; }
+.embed-card iframe { width: 100%; aspect-ratio: 16/9; border: none; display: block; margin: 0; border-radius: 0; }
+
 @media (max-width: 768px) {
   #sidebar { transform: translateX(-100%); }
   #app { margin-left: 0; width: 100%; }
