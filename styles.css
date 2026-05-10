@@ -439,6 +439,20 @@ body.login-mode #app { margin-left: 0; width: 100%; }
 .comment-form input { flex: 1; padding: 12px 16px; background: var(--bg-main); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main); }
 .comment-form input:focus { border-color: var(--primary); outline: none; }
 
+/* Table Module */
+.custom-table { width: 100%; border-collapse: collapse; min-width: 400px; margin: 16px 0; background: var(--bg-card); color: var(--text-main); font-size: 15px; }
+.custom-table th, .custom-table td { border: 1px solid var(--border); padding: 12px 16px; text-align: left; }
+.custom-table th { font-weight: 600; background: rgba(255,255,255,0.02); }
+.custom-table td { position: relative; }
+.custom-table .table-cell-content { min-height: 24px; outline: none; }
+.custom-table .table-cell-content:focus { background: rgba(255,255,255,0.05); }
+
+/* Table Themes */
+.table-default th { background: rgba(255,255,255,0.03); }
+.table-blue th { background: rgba(43, 108, 176, 0.2); color: #90cdf4; border-color: rgba(43, 108, 176, 0.4); }
+.table-blue td { border-color: rgba(43, 108, 176, 0.2); }
+.table-stripe tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+
 /* Modals */
 .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; }
 .modal-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }

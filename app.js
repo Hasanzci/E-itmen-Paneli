@@ -395,7 +395,80 @@ async function openMaterial(lessonId, title) {
 }
 
 function renderMaterialData(m) {
-  $("#materialContent").innerHTML = m.content || `<p class="muted">İçerik bulunamadı.</p>`;
+  const data = migrateContent(m.content);
+  
+  let html = "";
+  
+  if(data.toc) {
+    let tocHtml = `<div class="toc-smart-block" style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:24px;">`;
+    tocHtml += `<h3 style="margin-bottom:12px; color:var(--primary); font-size:18px; display:flex; align-items:center; gap:8px;">📑 ${escapeHtml(data.toc.title || 'İçindekiler')}</h3>`;
+    
+    if(data.toc.mode === 'manual' && data.toc.manualText) {
+      const lines = data.toc.manualText.split('\n');
+      tocHtml += `<ul style="list-style-type:none; padding-left:0; line-height:1.8; margin:0;">`;
+      lines.forEach(line => {
+        let indent = 0;
+        let cleanLine = line;
+        while(cleanLine.startsWith('-') || cleanLine.startsWith(' ')) { 
+          if(cleanLine.startsWith(' ')) indent += 0.5;
+          else indent += 1;
+          cleanLine = cleanLine.substring(1); 
+        }
+        if(cleanLine.trim()) {
+           tocHtml += `<li style="margin-left:${Math.floor(indent)*20}px; border-bottom:1px dashed var(--border); padding:6px 0; color:var(--text-main);">${escapeHtml(cleanLine.trim())}</li>`;
+        }
+      });
+      tocHtml += `</ul>`;
+    } else {
+      tocHtml += `<ul style="list-style-type:none; padding-left:0; line-height:1.8; margin:0;">`;
+      data.sections.forEach(sec => {
+        tocHtml += `<li style="border-bottom:1px dashed var(--border); padding:8px 0;">
+          <a href="#sec_${sec.id}" class="toc-smart-link" style="color:var(--text-main); text-decoration:none; display:flex; justify-content:space-between; align-items:center;">
+            <strong>${escapeHtml(sec.title)}</strong>
+            <span style="color:var(--primary); font-size:12px; background:rgba(130,58,175,0.1); padding:2px 8px; border-radius:12px;">Bölüme Git →</span>
+          </a>
+        </li>`;
+      });
+      tocHtml += `</ul>`;
+    }
+    tocHtml += `</div>`;
+    html += tocHtml;
+  }
+  
+  data.sections.forEach(sec => {
+    if (sec.type === "toggle") {
+      html += `<details id="sec_${sec.id}" class="material-section material-toggle" style="margin-bottom:24px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px; box-shadow:var(--shadow);">`;
+      html += `<summary style="font-size:18px; font-weight:bold; cursor:pointer; color:var(--primary); padding-bottom:8px; outline:none; user-select:none;">▶️ ${escapeHtml(sec.title)}</summary>`;
+      html += `<div class="section-content-wrapper" style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">${sec.content}</div>`;
+      html += `</details>`;
+    } else {
+      html += `<div id="sec_${sec.id}" class="material-section" style="margin-bottom:40px; background:var(--bg-main); border:1px solid var(--border); border-radius:12px; padding:24px; box-shadow:var(--shadow);">`;
+      html += `<h2 style="border-bottom:2px solid var(--primary); padding-bottom:12px; margin-bottom:20px; font-size:24px;">${escapeHtml(sec.title)}</h2>`;
+      html += `<div class="section-content-wrapper">`;
+      
+      if(sec.type === "table" && sec.tableData) {
+        html += `<div style="overflow-x:auto;"><table class="custom-table table-${sec.tableData.theme}"><tbody>`;
+        sec.tableData.rows.forEach((row, rIndex) => {
+          let isHeader = (rIndex === 0 && sec.tableData.headerRow);
+          html += `<tr>`;
+          row.forEach(cell => {
+            let tag = isHeader ? 'th' : 'td';
+            html += `<${tag}>${cell}</${tag}>`;
+          });
+          html += `</tr>`;
+        });
+        html += `</tbody></table></div>`;
+      } else if (sec.type === "mermaid") {
+        html += `<div class="mermaid" style="background:white; padding:16px; border-radius:8px; overflow:auto; text-align:center;">${escapeHtml(sec.content)}</div>`;
+      } else {
+        html += sec.content;
+      }
+      
+      html += `</div></div>`;
+    }
+  });
+  
+  $("#materialContent").innerHTML = html || `<p class="muted">İçerik bulunamadı.</p>`;
   
   if (m.updatedAt) {
     const d = new Date(m.updatedAt);
@@ -415,30 +488,60 @@ function renderMaterialData(m) {
   generateTOC();
   loadComments(state.currentLessonId);
   setupUnfurling();
+  
+  try {
+    if(window.mermaid) {
+      mermaid.initialize({ startOnLoad: false, theme: 'default' });
+      mermaid.run({ querySelector: '.mermaid' });
+    }
+  } catch(e) { console.warn("Mermaid error:", e); }
 }
 
 function generateTOC() {
-  const content = $("#materialContent");
-  const headers = content.querySelectorAll("h1, h2, h3");
   const tocList = $("#tocList");
   tocList.innerHTML = "";
   
-  if (headers.length === 0) {
+  const content = $("#materialContent");
+  const sectionEls = content.querySelectorAll(".material-section");
+  
+  if (sectionEls.length === 0) {
     tocList.innerHTML = '<span class="muted" style="font-size:13px;">Başlık bulunamadı.</span>';
     return;
   }
+  
+  const observerItems = [];
 
-  headers.forEach((h, i) => {
-    if (!h.id) h.id = "h_" + i;
+  sectionEls.forEach(secEl => {
+    const secId = secEl.id;
+    const secTitle = secEl.querySelector("h2").textContent;
+    
     const a = document.createElement("a");
-    a.href = "#" + h.id;
-    a.className = "toc-item toc-" + h.tagName.toLowerCase();
-    a.textContent = h.textContent;
+    a.href = "#" + secId;
+    a.className = "toc-item toc-h1";
+    a.innerHTML = `<strong>${escapeHtml(secTitle)}</strong>`;
     a.onclick = (e) => {
       e.preventDefault();
-      h.scrollIntoView({ behavior: "smooth", block: "start" });
+      secEl.scrollIntoView({ behavior: "smooth", block: "start" });
     };
     tocList.appendChild(a);
+    observerItems.push(secEl);
+    
+    const innerHeaders = secEl.querySelectorAll(".section-content-wrapper h1, .section-content-wrapper h2, .section-content-wrapper h3");
+    innerHeaders.forEach((h, i) => {
+      if (!h.id) h.id = "h_" + secId + "_" + i;
+      const sub = document.createElement("a");
+      sub.href = "#" + h.id;
+      const tag = h.tagName.toLowerCase();
+      sub.className = "toc-item toc-" + tag;
+      sub.textContent = h.textContent;
+      sub.style.paddingLeft = tag === 'h1' ? '24px' : (tag === 'h2' ? '36px' : '48px');
+      sub.onclick = (e) => {
+        e.preventDefault();
+        h.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      tocList.appendChild(sub);
+      observerItems.push(h);
+    });
   });
 
   const observer = new IntersectionObserver(entries => {
@@ -452,7 +555,7 @@ function generateTOC() {
     });
   }, { rootMargin: "0px 0px -80% 0px" });
 
-  headers.forEach(h => observer.observe(h));
+  observerItems.forEach(h => observer.observe(h));
 }
 
 function setupUnfurling() {
@@ -722,32 +825,120 @@ function setupAddLesson() {
 
 // ============= MATERYAL EDİTÖRÜ (Fotoğraf altı yazı düzeltildi) =============
 
-function ensureQuill() {
-  if (quill) return quill;
+let activeQuill = null;
+let sectionEditors = {};
+window.lessonData = { toc: { mode: "auto", title: "İçindekiler", manualText: "" }, sections: [] };
+let autoSaveInterval = null;
+let lastSavedContentStr = "";
 
-  const BlockEmbed = Quill.import('blots/block/embed');
-  class DividerBlot extends BlockEmbed {
-    static create() { return super.create(); }
+function _newId() { return Math.random().toString(36).substr(2, 9); }
+
+function migrateContent(content) {
+  if (!content) return { toc: { mode: "auto", title: "İçindekiler", manualText: "" }, sections: [{ id: _newId(), title: "Ana Bölüm", content: "" }] };
+  if (content.startsWith("{") && content.includes('"sections"')) {
+    try { return JSON.parse(content); } catch(e) {}
   }
-  DividerBlot.blotName = 'divider';
-  DividerBlot.tagName = 'hr';
-  Quill.register(DividerBlot);
+  return {
+    toc: { mode: "auto", title: "İçindekiler", manualText: "" },
+    sections: [{ id: _newId(), title: "Ana Bölüm", content: content }]
+  };
+}
 
-  quill = new Quill('#materialEditor', {
+let slashMenuOpen = false;
+let slashCursor = 0;
+
+function createQuillInstance(selector) {
+  const BlockEmbed = Quill.import('blots/block/embed');
+  if(!Quill.imports['formats/divider']) {
+    class DividerBlot extends BlockEmbed { static create() { return super.create(); } }
+    DividerBlot.blotName = 'divider'; DividerBlot.tagName = 'hr';
+    Quill.register(DividerBlot);
+  }
+  const q = new Quill(selector, {
     theme: 'bubble',
-    placeholder: 'İçeriği yazmaya başla... Metni seçtiğinizde biçimlendirme menüsü açılır.',
+    placeholder: 'İçeriği yazmaya başla... / ile menüyü aç.',
     modules: {
+      formula: true,
       toolbar: [
         ['bold', 'italic', 'underline', 'strike'],
         [{ 'header': [1, 2, 3, false] }],
-        ['blockquote', 'code-block'],
+        ['blockquote', 'code-block', 'formula'],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
         ['link', 'image', 'video'],
         ['clean']
       ]
     }
   });
-  return quill;
+
+  q.on('text-change', (delta, oldDelta, source) => {
+    if (source !== 'user') return;
+    const sel = q.getSelection();
+    if (!sel) return;
+    const cursor = sel.index;
+    
+    // Slash Menu Logic
+    const char = q.getText(cursor - 1, 1);
+    if (char === '/') {
+      slashMenuOpen = true;
+      slashCursor = cursor - 1;
+      const bounds = q.getBounds(cursor);
+      const menu = $("#slashMenu");
+      const containerRect = q.container.getBoundingClientRect();
+      // Ensure menu is relative to viewport + scroll
+      menu.style.left = (bounds.left + containerRect.left + window.scrollX) + 'px';
+      menu.style.top = (bounds.top + containerRect.top + window.scrollY + 20) + 'px';
+      menu.style.display = 'block';
+    } else if (slashMenuOpen) {
+      if (char === ' ' || char === '\n') {
+        $("#slashMenu").style.display = 'none';
+        slashMenuOpen = false;
+      }
+    }
+    
+    // Markdown Shortcuts Logic
+    if (char === ' ') {
+      const text = q.getText(0, cursor);
+      const lastLineBreak = text.lastIndexOf('\n', cursor - 2);
+      const lineStart = lastLineBreak === -1 ? 0 : lastLineBreak + 1;
+      const lineText = text.substring(lineStart, cursor);
+      
+      if (lineText === '# ') {
+        q.deleteText(cursor - 2, 2);
+        q.formatLine(cursor - 2, 1, 'header', 1);
+      } else if (lineText === '## ') {
+        q.deleteText(cursor - 3, 3);
+        q.formatLine(cursor - 3, 1, 'header', 2);
+      } else if (lineText === '### ') {
+        q.deleteText(cursor - 4, 4);
+        q.formatLine(cursor - 4, 1, 'header', 3);
+      } else if (lineText === '- ' || lineText === '* ') {
+        q.deleteText(cursor - 2, 2);
+        q.formatLine(cursor - 2, 1, 'list', 'bullet');
+      } else if (lineText === '1. ') {
+        q.deleteText(cursor - 3, 3);
+        q.formatLine(cursor - 3, 1, 'list', 'ordered');
+      } else if (lineText === '[] ') {
+        q.deleteText(cursor - 3, 3);
+        q.formatText(cursor - 3, 1, 'list', 'unchecked');
+      } else if (lineText === '> ') {
+        q.deleteText(cursor - 2, 2);
+        q.formatLine(cursor - 2, 1, 'blockquote', true);
+      }
+    } else if (char === '\n') {
+      const text = q.getText(0, cursor);
+      const lastLineBreak = text.lastIndexOf('\n', cursor - 2);
+      const lineStart = lastLineBreak === -1 ? 0 : lastLineBreak + 1;
+      const lineText = text.substring(lineStart, cursor - 1);
+      if (lineText.trim() === '---') {
+        q.deleteText(cursor - 4, 4);
+        q.insertEmbed(cursor - 4, 'divider', true, 'user');
+        q.insertText(cursor - 3, '\n', 'user');
+        q.setSelection(cursor - 2);
+      }
+    }
+  });
+
+  return q;
 }
 
 async function openAdminMaterial(lessonId, title) {
@@ -760,143 +951,483 @@ async function openAdminMaterial(lessonId, title) {
     title
   ]);
   setTopbarActions(`
+    <span id="autoSaveIndicator" style="font-size:12px; color:var(--text-muted); margin-right:12px; display:inline-flex; align-items:center; height:100%;"></span>
+    <button id="revisionsBtn" class="btn btn-ghost btn-sm">🕰️ Versiyonlar</button>
     <button id="previewBtn" class="btn btn-ghost btn-sm">👁 Önizle</button>
     <button id="saveBtn" class="btn btn-primary btn-sm">💾 Kaydet</button>
     <button class="btn btn-back" onclick="openAdminCourse(state.currentCourseId, state.currentCourseName)">← Dön</button>
   `);
   
   $("#adminMaterialTitle").textContent = title + " - Materyal";
-  $("#materialPreview").style.display = "none";
-  $("#materialEditor").style.display = "block";
-
-  ensureQuill();
+  $("#sectionsContainer").innerHTML = "Yükleniyor...";
   
   // Custom button bindings from topbar
-  $("#saveBtn").addEventListener("click", saveMaterialAction);
-  $("#previewBtn").addEventListener("click", togglePreviewAction);
+  $("#saveBtn").onclick = saveMaterialAction;
+  $("#previewBtn").onclick = togglePreviewAction;
+  $("#revisionsBtn").onclick = showRevisions;
+  
+  if (autoSaveInterval) clearInterval(autoSaveInterval);
+  autoSaveInterval = setInterval(autoSaveTick, 10000);
+  lastSavedContentStr = "";
+  
+  $("#addSectionBtn").onclick = () => {
+    saveCurrentEditorsToData();
+    lessonData.sections.push({ id: _newId(), title: "Yeni Bölüm", type: "text", content: "" });
+    drawSections();
+  };
+  
+  $("#addTableBtn").onclick = () => {
+    saveCurrentEditorsToData();
+    lessonData.sections.push({ 
+      id: _newId(), title: "Yeni Tablo", type: "table", 
+      tableData: { cols: 2, rows: [["", ""], ["", ""]], headerRow: true, theme: "default" } 
+    });
+    drawSections();
+  };
+  
+  $("#addToggleBtn").onclick = () => {
+    saveCurrentEditorsToData();
+    lessonData.sections.push({ id: _newId(), title: "Yeni Akordion", type: "toggle", content: "" });
+    drawSections();
+  };
+  
+  $("#addMermaidBtn").onclick = () => {
+    saveCurrentEditorsToData();
+    lessonData.sections.push({ id: _newId(), title: "Yeni Akış Diyagramı", type: "mermaid", content: "graph TD;\n    A-->B;\n    A-->C;\n    B-->D;\n    C-->D;" });
+    drawSections();
+  };
+
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#slashMenu") && slashMenuOpen) {
+      $("#slashMenu").style.display = 'none';
+      slashMenuOpen = false;
+    }
+  });
+
+  document.querySelectorAll(".slash-item").forEach(btn => {
+    btn.onclick = () => {
+      const cmd = btn.dataset.cmd;
+      const q = getActiveQuill();
+      if (!q || !slashMenuOpen) return;
+      
+      q.deleteText(slashCursor, q.getSelection(true).index - slashCursor);
+      
+      if (cmd === 'h1') q.formatLine(slashCursor, 1, 'header', 1);
+      if (cmd === 'h2') q.formatLine(slashCursor, 1, 'header', 2);
+      if (cmd === 'bullet') q.formatLine(slashCursor, 1, 'list', 'bullet');
+      if (cmd === 'callout') {
+        q.insertText(slashCursor, '💡 Bilgi: ', 'bold', true);
+        q.formatLine(slashCursor, 1, 'blockquote', true);
+        q.setSelection(slashCursor + 9);
+      }
+      if (cmd === 'divider') {
+        q.insertEmbed(slashCursor, 'divider', true, 'user');
+        q.setSelection(slashCursor + 1);
+      }
+      
+      $("#slashMenu").style.display = 'none';
+      slashMenuOpen = false;
+    };
+  });
 
   if (cache.materials[lessonId]) {
-    quill.root.innerHTML = cache.materials[lessonId].content || "";
+    renderAdminSections(cache.materials[lessonId]);
     return;
   }
   try {
     const res = await api("getMaterials", { lessonId });
     cache.materials[lessonId] = res.data || {};
     cache.save();
-    quill.root.innerHTML = res.data?.content || "";
+    renderAdminSections(cache.materials[lessonId]);
   } catch (e) { toast(e.message, "error"); }
+}
+
+function renderAdminSections(m) {
+  window.lessonData = migrateContent(m.content);
+  
+  $("#tocModeSelect").value = lessonData.toc.mode;
+  $("#tocTitleInput").value = lessonData.toc.title || "İçindekiler";
+  $("#manualTocTextarea").value = lessonData.toc.manualText || "";
+  $("#manualTocEditor").style.display = lessonData.toc.mode !== "auto" ? "block" : "none";
+  
+  $("#tocModeSelect").onchange = e => {
+    lessonData.toc.mode = e.target.value;
+    $("#manualTocEditor").style.display = lessonData.toc.mode !== "auto" ? "block" : "none";
+  };
+  $("#tocTitleInput").oninput = e => lessonData.toc.title = e.target.value;
+  $("#manualTocTextarea").oninput = e => lessonData.toc.manualText = e.target.value;
+  
+  drawSections();
+}
+
+function drawSections() {
+  const container = $("#sectionsContainer");
+  container.innerHTML = "";
+  sectionEditors = {};
+  
+  lessonData.sections.forEach((sec, idx) => {
+    const el = document.createElement("div");
+    el.className = "admin-section-block";
+    el.style.border = "1px solid var(--border)";
+    el.style.borderRadius = "8px";
+    el.style.background = "var(--bg-card)";
+    el.style.padding = "16px";
+    
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <input type="text" class="sec-title-input" value="${escapeHtml(sec.title)}" style="background:transparent; color:white; border:none; font-size:18px; font-weight:600; flex:1;" placeholder="Bölüm Adı" />
+        <div>
+          <button class="btn btn-ghost btn-sm move-up" ${idx===0 ? 'disabled':''}>⬆️</button>
+          <button class="btn btn-ghost btn-sm move-down" ${idx===lessonData.sections.length-1 ? 'disabled':''}>⬇️</button>
+          <button class="btn btn-danger btn-sm del-sec">Sil</button>
+        </div>
+      </div>
+    `;
+    if (sec.type === "table") {
+      el.innerHTML += `<div class="table-editor-container" id="editor_${sec.id}" style="min-height: 100px;"></div>`;
+      container.appendChild(el);
+      initTableEditor(sec, el.querySelector(`#editor_${sec.id}`));
+    } else if (sec.type === "mermaid") {
+      el.innerHTML += `
+        <div style="display:flex; gap:16px; margin-top:8px;">
+          <textarea id="mermaid_src_${sec.id}" style="flex:1; height:150px; background:var(--bg-main); color:var(--text-main); font-family:monospace; padding:8px; border:1px solid var(--border); border-radius:6px;">${sec.content}</textarea>
+          <div id="mermaid_preview_${sec.id}" style="flex:1; background:white; padding:16px; border-radius:6px; overflow:auto;"></div>
+        </div>
+      `;
+      container.appendChild(el);
+      const textInput = el.querySelector(`#mermaid_src_${sec.id}`);
+      const preview = el.querySelector(`#mermaid_preview_${sec.id}`);
+      const updatePreview = () => {
+        sec.content = textInput.value;
+        try {
+          mermaid.render('svg_' + sec.id, textInput.value).then(res => {
+            preview.innerHTML = res.svg;
+          }).catch(err => {
+            preview.innerHTML = `<span style="color:red">Sözdizimi hatası: ${err}</span>`;
+          });
+        } catch(e) {}
+      };
+      textInput.addEventListener("input", updatePreview);
+      updatePreview();
+    } else {
+      if (sec.type === "toggle") {
+        el.style.borderLeft = "4px solid var(--primary)";
+        el.innerHTML += `<div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">▶️ Bu bölüm öğrencilere tıklanınca açılan bir akordion olarak gösterilir.</div>`;
+      }
+      el.innerHTML += `<div id="editor_${sec.id}" style="min-height: 100px;"></div>`;
+      container.appendChild(el);
+      const q = createQuillInstance(`#editor_${sec.id}`);
+      q.root.innerHTML = sec.content || "";
+      sectionEditors[sec.id] = q;
+      q.on('selection-change', (range) => {
+        if (range) activeQuill = q;
+      });
+    }
+    
+    const titleInput = el.querySelector(".sec-title-input");
+    titleInput.oninput = (e) => sec.title = e.target.value;
+    
+    el.querySelector(".move-up").onclick = () => {
+      const temp = lessonData.sections[idx-1];
+      lessonData.sections[idx-1] = lessonData.sections[idx];
+      lessonData.sections[idx] = temp;
+      saveCurrentEditorsToData();
+      drawSections();
+    };
+    el.querySelector(".move-down").onclick = () => {
+      const temp = lessonData.sections[idx+1];
+      lessonData.sections[idx+1] = lessonData.sections[idx];
+      lessonData.sections[idx] = temp;
+      saveCurrentEditorsToData();
+      drawSections();
+    };
+    el.querySelector(".del-sec").onclick = () => {
+      if(!confirm("Bölümü silmek istiyor musunuz?")) return;
+      lessonData.sections.splice(idx, 1);
+      saveCurrentEditorsToData();
+      drawSections();
+    };
+  });
+}
+
+function initTableEditor(sec, container) {
+  const renderTable = () => {
+    let html = `<div class="table-controls" style="margin-bottom:12px; display:flex; gap:8px; align-items:center;">
+      <button class="btn btn-ghost btn-sm add-row-btn">+ Satır</button>
+      <button class="btn btn-ghost btn-sm add-col-btn">+ Sütun</button>
+      <select class="table-theme-select btn btn-ghost btn-sm" style="padding:4px; background:var(--bg-main); color:white; border:1px solid var(--border);">
+        <option value="default">Düz Tema</option>
+        <option value="blue">Mavi Vurgu</option>
+        <option value="stripe">Zebra (Stripe)</option>
+      </select>
+      <label style="color:var(--text-muted); font-size:13px; display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" class="header-toggle" ${sec.tableData.headerRow ? 'checked':''}> İlk satır başlık olsun
+      </label>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="custom-table table-${sec.tableData.theme}" style="margin:0;">
+      <tbody>`;
+      
+    sec.tableData.rows.forEach((row, rIndex) => {
+      let isHeader = (rIndex === 0 && sec.tableData.headerRow);
+      html += `<tr>`;
+      row.forEach((cell, cIndex) => {
+        let tag = isHeader ? 'th' : 'td';
+        html += `<${tag}>
+          <div contenteditable="true" class="table-cell-content" data-r="${rIndex}" data-c="${cIndex}">${cell}</div>
+        </${tag}>`;
+      });
+      html += `<td style="width:30px; text-align:center; border:none; background:transparent;"><button class="btn btn-danger btn-sm del-row-btn" data-r="${rIndex}">-</button></td>`;
+      html += `</tr>`;
+    });
+    
+    html += `<tr>`;
+    for(let i=0; i<sec.tableData.cols; i++) {
+       html += `<td style="text-align:center; border:none; padding-top:4px; background:transparent;"><button class="btn btn-ghost btn-sm del-col-btn" data-c="${i}">Sütunu Sil</button></td>`;
+    }
+    html += `<td style="border:none;"></td></tr></tbody></table></div>`;
+    
+    container.innerHTML = html;
+    
+    container.querySelector(".table-theme-select").value = sec.tableData.theme;
+    container.querySelector(".table-theme-select").onchange = (e) => {
+      sec.tableData.theme = e.target.value;
+      renderTable();
+    };
+    container.querySelector(".header-toggle").onchange = (e) => {
+      sec.tableData.headerRow = e.target.checked;
+      renderTable();
+    };
+    container.querySelector(".add-row-btn").onclick = () => {
+      sec.tableData.rows.push(Array(sec.tableData.cols).fill(""));
+      renderTable();
+    };
+    container.querySelector(".add-col-btn").onclick = () => {
+      sec.tableData.cols++;
+      sec.tableData.rows.forEach(r => r.push(""));
+      renderTable();
+    };
+    container.querySelectorAll(".del-row-btn").forEach(btn => {
+      btn.onclick = (e) => {
+        if(sec.tableData.rows.length <= 1) return;
+        sec.tableData.rows.splice(parseInt(e.target.dataset.r), 1);
+        renderTable();
+      };
+    });
+    container.querySelectorAll(".del-col-btn").forEach(btn => {
+      btn.onclick = (e) => {
+        if(sec.tableData.cols <= 1) return;
+        const cIdx = parseInt(e.target.dataset.c);
+        sec.tableData.cols--;
+        sec.tableData.rows.forEach(r => r.splice(cIdx, 1));
+        renderTable();
+      };
+    });
+    container.querySelectorAll(".table-cell-content").forEach(cell => {
+      cell.onblur = (e) => {
+        sec.tableData.rows[e.target.dataset.r][e.target.dataset.c] = e.target.innerHTML;
+      };
+      cell.onkeydown = (e) => {
+        if(e.ctrlKey || e.metaKey) {
+          if(e.key === 'b') { e.preventDefault(); document.execCommand('bold'); }
+          if(e.key === 'i') { e.preventDefault(); document.execCommand('italic'); }
+          if(e.key === 'u') { e.preventDefault(); document.execCommand('underline'); }
+        }
+      };
+    });
+  };
+  renderTable();
+}
+
+function saveCurrentEditorsToData() {
+  if(!lessonData || !lessonData.sections) return;
+  lessonData.sections.forEach(sec => {
+    if(sec.type !== "table" && sectionEditors[sec.id]) {
+      sec.content = sectionEditors[sec.id].root.innerHTML;
+    }
+  });
 }
 
 async function saveMaterialAction() {
-  if (!quill) return;
-  const html = quill.root.innerHTML;
+  saveCurrentEditorsToData();
+  const jsonStr = JSON.stringify(window.lessonData);
   try {
     await api("saveMaterial", {
       lessonId: state.currentLessonId,
-      content: html,
-      type: "html"
+      content: jsonStr,
+      type: "json",
+      savedBy: state.user ? state.user.name : "Admin",
+      isAutoSave: false
     });
-    cache.materials[state.currentLessonId] = { content: html, type: "html" };
+    cache.materials[state.currentLessonId] = { content: jsonStr, type: "json" };
     cache.save();
-    toast("Materyal başarıyla kaydedildi", "success");
+    lastSavedContentStr = jsonStr;
+    const indicator = $("#autoSaveIndicator");
+    if(indicator) indicator.textContent = "Kaydedildi " + new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+    toast("Materyal bölümleri başarıyla kaydedildi", "success");
   } catch (e) { toast(e.message, "error"); }
 }
 
-function togglePreviewAction() {
-  if (!quill) return;
-  const p = $("#materialPreview");
-  const e = $("#materialEditor");
-  if (p.style.display === "none") {
-    p.innerHTML = quill.root.innerHTML;
-    p.style.display = "block";
-    e.style.display = "none";
-    $("#previewBtn").textContent = "✏️ Düzenle";
-  } else {
-    p.style.display = "none";
-    e.style.display = "block";
-    $("#previewBtn").textContent = "👁 Önizle";
+async function autoSaveTick() {
+  if (!state.currentLessonId || !window.lessonData) return;
+  saveCurrentEditorsToData();
+  const currentStr = JSON.stringify(window.lessonData);
+  if (!lastSavedContentStr) {
+    lastSavedContentStr = currentStr;
+    return;
   }
+  if (currentStr === lastSavedContentStr) return; // no changes
+  
+  const indicator = $("#autoSaveIndicator");
+  if(indicator) indicator.textContent = "Kaydediliyor...";
+  
+  try {
+    await api("saveMaterial", { 
+      lessonId: state.currentLessonId, 
+      content: currentStr, 
+      type: "json",
+      savedBy: state.user ? state.user.name : "Admin",
+      isAutoSave: true
+    });
+    lastSavedContentStr = currentStr;
+    if(indicator) indicator.textContent = "Taslak Kaydedildi " + new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+    cache.materials[state.currentLessonId] = { content: currentStr, type: "json" };
+    cache.save();
+  } catch(e) {
+    if(indicator) indicator.textContent = "Kayıt Hatası";
+  }
+}
+
+async function showRevisions() {
+  showModal("revisionsModal");
+  $("#revisionsList").innerHTML = "Yükleniyor...";
+  try {
+    const res = await api("getRevisions", { lessonId: state.currentLessonId });
+    const revs = res.data || [];
+    if(revs.length === 0) {
+      $("#revisionsList").innerHTML = "<p class='muted'>Henüz geçmiş versiyon yok.</p>";
+      return;
+    }
+    let html = `<ul style="list-style:none; padding:0; margin:0;">`;
+    revs.forEach(r => {
+      const d = new Date(r.createdAt);
+      html += `<li style="padding:12px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; background:var(--bg-main); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:bold;">${d.toLocaleDateString('tr-TR')} ${d.toLocaleTimeString('tr-TR')}</div>
+          <div style="font-size:12px; color:var(--text-muted);">Kaydeden: ${escapeHtml(r.savedBy)}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm restore-rev-btn" data-content="${escapeHtml(r.content)}">Bu Versiyona Dön</button>
+      </li>`;
+    });
+    html += `</ul>`;
+    $("#revisionsList").innerHTML = html;
+    
+    $$(".restore-rev-btn").forEach(btn => {
+      btn.onclick = (e) => {
+        if(!confirm("Mevcut tüm değişiklikleriniz bu versiyonla üzerine yazılacak. Onaylıyor musunuz?")) return;
+        const c = e.target.dataset.content;
+        window.lessonData = migrateContent(c);
+        drawSections();
+        saveMaterialAction();
+        closeModal("revisionsModal");
+      };
+    });
+  } catch(e) {
+    $("#revisionsList").innerHTML = `<p class="muted" style="color:var(--danger)">Hata: ${e.message}</p>`;
+  }
+}
+
+function togglePreviewAction() {
+  // To be implemented
+  toast("Önizleme modu bölüm bazlı düzende güncelleniyor.", "info");
+}
+
+function getActiveQuill() {
+  if (activeQuill) return activeQuill;
+  const ids = Object.keys(sectionEditors);
+  if(ids.length > 0) return sectionEditors[ids[0]];
+  return null;
 }
 
 function setupMaterialEditor() {
   $("#insertH1Btn").addEventListener("click", () => {
-    if (!quill) return;
-    const range = quill.getSelection(true);
-    quill.formatLine(range.index, range.length, 'header', 1);
+    const q = getActiveQuill(); if (!q) return;
+    const range = q.getSelection(true);
+    q.formatLine(range.index, range.length, 'header', 1);
   });
   
   $("#insertH2Btn").addEventListener("click", () => {
-    if (!quill) return;
-    const range = quill.getSelection(true);
-    quill.formatLine(range.index, range.length, 'header', 2);
+    const q = getActiveQuill(); if (!q) return;
+    const range = q.getSelection(true);
+    q.formatLine(range.index, range.length, 'header', 2);
   });
   
   $("#insertDividerBtn").addEventListener("click", () => {
-    if (!quill) return;
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertEmbed(range.index, 'divider', true, 'user');
-    quill.setSelection(range.index + 1);
+    const q = getActiveQuill(); if (!q) return;
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertEmbed(range.index, 'divider', true, 'user');
+    q.setSelection(range.index + 1);
   });
   
   $("#insertCalloutBtn").addEventListener("click", () => {
-    if (!quill) return;
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertText(range.index, '💡 Bilgi: ', 'bold', true);
-    quill.formatLine(range.index, 1, 'blockquote', true);
-    quill.setSelection(range.index + 9);
+    const q = getActiveQuill(); if (!q) return;
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertText(range.index, '💡 Bilgi: ', 'bold', true);
+    q.formatLine(range.index, 1, 'blockquote', true);
+    q.setSelection(range.index + 9);
   });
 
   $("#insertDurationBtn").addEventListener("click", () => {
-    if (!quill) return;
+    const q = getActiveQuill(); if (!q) return;
     const duration = prompt("Süre (örn. 10 Dakika):");
     if (!duration) return;
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertText(range.index, '⏱ ' + duration + ' ', 'bold', true);
-    quill.setSelection(range.index + duration.length + 3);
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertText(range.index, '⏱ ' + duration + ' ', 'bold', true);
+    q.setSelection(range.index + duration.length + 3);
   });
 
   $("#insertYoutubeBtn").addEventListener("click", () => {
-    if (!quill) return;
+    const q = getActiveQuill(); if (!q) return;
     const url = prompt("YouTube video URL'si:");
     if (!url) return;
     const embedUrl = toYoutubeEmbed(url);
     if (!embedUrl) { toast("Geçersiz YouTube linki.", "error"); return; }
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertEmbed(range.index, 'video', embedUrl, 'user');
-    quill.insertText(range.index + 1, '\n', 'user');
-    quill.setSelection(range.index + 2);
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertEmbed(range.index, 'video', embedUrl, 'user');
+    q.insertText(range.index + 1, '\n', 'user');
+    q.setSelection(range.index + 2);
   });
 
   $("#insertGeniallyBtn").addEventListener("click", () => {
-    if (!quill) return;
+    const q = getActiveQuill(); if (!q) return;
     const url = prompt("Genially URL'si:");
     if (!url) return;
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertEmbed(range.index, 'video', url, 'user');
-    quill.insertText(range.index + 1, '\n', 'user');
-    quill.setSelection(range.index + 2);
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertEmbed(range.index, 'video', url, 'user');
+    q.insertText(range.index + 1, '\n', 'user');
+    q.setSelection(range.index + 2);
   });
 
   $("#insertPdfBtn").addEventListener("click", () => {
-    if (!quill) return;
+    const q = getActiveQuill(); if (!q) return;
     const url = prompt("PDF/Drive linkini yapıştır:");
     if (!url) return;
     const text = prompt("Görünecek metin:", "📄 Ders Notları (PDF)") || "📄 PDF";
-    const range = quill.getSelection(true) || { index: quill.getLength() };
-    quill.insertText(range.index, text, { link: url }, 'user');
-    quill.insertText(range.index + text.length, '\n', 'user');
-    quill.setSelection(range.index + text.length + 1);
+    const range = q.getSelection(true) || { index: q.getLength() };
+    q.insertText(range.index, text, { link: url }, 'user');
+    q.insertText(range.index + text.length, '\n', 'user');
+    q.setSelection(range.index + text.length + 1);
   });
 
   $("#insertImgBtn").addEventListener("click", () => {
-    if (!quill) return;
+    const q = getActiveQuill(); if (!q) return;
     const url = prompt("Görselin tam URL'sini yapıştır (örn. https://site.com/resim.png):");
     if (!url) return;
-    let range = quill.getSelection();
-    if (!range) range = { index: quill.getLength() };
-    quill.insertEmbed(range.index, 'image', url, 'user');
-    quill.insertText(range.index + 1, '\n\n', 'user');
-    quill.setSelection(range.index + 2);
+    let range = q.getSelection();
+    if (!range) range = { index: q.getLength() };
+    q.insertEmbed(range.index, 'image', url, 'user');
+    q.insertText(range.index + 1, '\n\n', 'user');
+    q.setSelection(range.index + 2);
     toast("Resim eklendi. Hemen altından yazmaya devam edebilirsiniz.", "success");
   });
 }

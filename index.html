@@ -8,8 +8,14 @@
   <!-- Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Quill (Word benzeri editör) -->
-  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.bubble.css" rel="stylesheet">
+  <link href="https://cdn.quilljs.com/1.3.6/quill.bubble.css" rel="stylesheet">
+  
+  <!-- KaTeX for Math Formulas -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  
+  <!-- Mermaid for Diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
 </head>
 <body class="login-mode">
 
@@ -186,6 +192,22 @@
         <h1 id="adminMaterialTitle" style="font-size:28px; margin-bottom: 8px;">Materyal Editörü</h1>
         <p class="muted">Aşağıdaki araçları kullanarak ders içeriğini oluşturabilirsiniz.</p>
 
+        <!-- TOC Settings Block -->
+        <div id="adminTocSettings" style="background:var(--bg-sidebar); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px;">
+          <h3 style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">📑 İçindekiler (ToC) Ayarları</h3>
+          <div style="display:flex; gap:8px;">
+            <select id="tocModeSelect" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:white;">
+              <option value="auto">Otomatik (H1/H2/H3)</option>
+              <option value="manual">Manuel Liste</option>
+              <option value="hybrid">Hibrit (Otomatik + Elle Düzenleme)</option>
+            </select>
+            <input type="text" id="tocTitleInput" placeholder="Başlık (Örn: Bu Bölümde)" value="İçindekiler" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:white; width:200px;" />
+          </div>
+          <div id="manualTocEditor" style="display:none; margin-top:12px;">
+            <textarea id="manualTocTextarea" placeholder="Her satıra bir madde yazın. Alt madde için satır başına tire (-) veya boşluk bırakın..." style="width:100%; height:100px; background:var(--bg-main); color:white; border:1px solid var(--border); border-radius:6px; padding:10px;"></textarea>
+          </div>
+        </div>
+
         <div class="editor-extra-toolbar">
           <button type="button" class="btn btn-ghost btn-sm" id="insertH1Btn">H1</button>
           <button type="button" class="btn btn-ghost btn-sm" id="insertH2Btn">H2</button>
@@ -198,7 +220,23 @@
           <button type="button" class="btn btn-primary btn-sm" id="insertImgBtn" style="background:#10b981;">🖼️ Resim Ekle</button>
         </div>
 
-        <div id="materialEditor"></div>
+        <div id="sectionsContainer" style="display:flex; flex-direction:column; gap:16px; margin-top:16px;"></div>
+        
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button id="addSectionBtn" class="btn btn-ghost" style="flex:1; border:1px dashed var(--border); padding:16px; text-align:center; font-weight:600;">📝 + Metin Bölümü</button>
+          <button id="addTableBtn" class="btn btn-ghost" style="flex:1; border:1px dashed var(--border); padding:16px; text-align:center; font-weight:600;">📊 + Tablo Bölümü</button>
+          <button id="addToggleBtn" class="btn btn-ghost" style="flex:1; border:1px dashed var(--border); padding:16px; text-align:center; font-weight:600;">▶️ + Akordion</button>
+          <button id="addMermaidBtn" class="btn btn-ghost" style="flex:1; border:1px dashed var(--border); padding:16px; text-align:center; font-weight:600;">📐 + Diyagram</button>
+        </div>
+
+        <div id="slashMenu" style="display:none; position:absolute; z-index:9999; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow); width:200px; padding:8px; color:var(--text-main);">
+          <div style="font-size:12px; color:var(--text-muted); padding:4px 8px; margin-bottom:4px; text-transform:uppercase;">Temel Bloklar</div>
+          <button class="btn btn-ghost btn-sm slash-item" data-cmd="h1" style="width:100%; text-align:left; padding:6px 8px; justify-content:flex-start;">H1 Başlık</button>
+          <button class="btn btn-ghost btn-sm slash-item" data-cmd="h2" style="width:100%; text-align:left; padding:6px 8px; justify-content:flex-start;">H2 Alt Başlık</button>
+          <button class="btn btn-ghost btn-sm slash-item" data-cmd="bullet" style="width:100%; text-align:left; padding:6px 8px; justify-content:flex-start;">Madde İşareti</button>
+          <button class="btn btn-ghost btn-sm slash-item" data-cmd="callout" style="width:100%; text-align:left; padding:6px 8px; justify-content:flex-start;">💡 Bilgi Kutusu</button>
+          <button class="btn btn-ghost btn-sm slash-item" data-cmd="divider" style="width:100%; text-align:left; padding:6px 8px; justify-content:flex-start;">➖ Ayırıcı Çizgi</button>
+        </div>
 
         <div id="materialPreview" class="material" style="display:none;"></div>
       </section>
@@ -247,11 +285,26 @@
         <form id="quickAddLessonForm">
           <label>Ders Adı</label>
           <input type="text" id="quickNewLessonTitle" required style="width:100%; padding:10px; margin-top:8px; margin-bottom:16px; border-radius:6px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border);" />
-          <button type="submit" class="btn btn-primary" style="width:100%;">Oluştur</button>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Ekle</button>
         </form>
       </div>
     </div>
   </div>
+
+  <!-- Revisions Modal -->
+  <div id="revisionsModal" class="modal hidden">
+    <div class="modal-overlay" onclick="closeModal('revisionsModal')"></div>
+    <div class="modal-content" style="max-width: 600px; height: 80vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h2>Geçmiş Versiyonlar</h2>
+        <button class="btn-icon close-modal" onclick="closeModal('revisionsModal')">✕</button>
+      </div>
+      <div class="modal-body" style="flex:1; overflow-y:auto; padding:0;">
+        <div id="revisionsList" style="padding:16px;"></div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Quill JS -->
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>

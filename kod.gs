@@ -19,7 +19,9 @@ const SHEETS_SCHEMA = {
   Courses:     ["id", "name", "description", "createdAt"],
   Lessons:     ["id", "courseId", "title", "order", "createdAt"],
   Materials:   ["id", "lessonId", "content", "type", "ownerId", "updatedAt"],
-  Comments:    ["id", "lessonId", "userId", "userName", "text", "createdAt"]
+  Comments:    ["id", "lessonId", "userId", "userName", "text", "createdAt"],
+  Revisions:   ["id", "lessonId", "content", "type", "savedBy", "createdAt"],
+  StickyNotes: ["id", "lessonId", "userId", "userName", "color", "text", "createdAt"]
 };
 
 // ====================== KURULUM (manuel çalıştır) ======================
@@ -97,6 +99,12 @@ function doPost(e) {
       // Comments
       case "getComments":    _checkAuth(params.token); result = { ok: true, data: getComments(params.lessonId) }; break;
       case "addComment":     _checkAuth(params.token); result = addComment(params); break;
+
+      // Revisions & StickyNotes
+      case "getRevisions":    _checkAuth(params.token, "admin"); result = { ok: true, data: getRevisions(params.lessonId) }; break;
+      case "getStickyNotes":  _checkAuth(params.token, "admin"); result = { ok: true, data: getStickyNotes(params.lessonId) }; break;
+      case "addStickyNote":   _checkAuth(params.token, "admin"); result = addStickyNote(params); break;
+      case "deleteStickyNote":_checkAuth(params.token, "admin"); result = deleteStickyNote(params); break;
 
       // Instructors
       case "addInstructor":    _checkAuth(params.token, "admin"); result = addInstructor(params); break;
@@ -371,17 +379,26 @@ function getMaterials(lessonId) {
   return { id: m.id, lessonId: m.lessonId, content: m.content, type: m.type || "html", ownerId: m.ownerId || "", updatedAt: m.updatedAt || "" };
 }
 
-function saveMaterial({ lessonId, content, type }) {
+function saveMaterial({ lessonId, content, type, savedBy, isAutoSave }) {
   const sh = _sheet("Materials");
   const existing = _rows("Materials").find(x => x.lessonId === lessonId);
+  const now = _now();
   if (existing) {
     sh.getRange(existing._row, 3).setValue(content || "");
     sh.getRange(existing._row, 4).setValue(type || "html");
-    sh.getRange(existing._row, 6).setValue(_now());
+    sh.getRange(existing._row, 6).setValue(now);
   } else {
-    sh.appendRow([_newId(), lessonId, content || "", type || "html", "", _now()]);
+    sh.appendRow([_newId(), lessonId, content || "", type || "html", "", now]);
   }
   _invalidateCache("Materials");
+  
+  if (!isAutoSave) {
+    try {
+      _sheet("Revisions").appendRow([_newId(), lessonId, content || "", type || "json", savedBy || "Admin", now]);
+      _invalidateCache("Revisions");
+    } catch(e) {}
+  }
+  
   return { ok: true };
 }
 
@@ -451,5 +468,30 @@ function deleteInstructor({ id }) {
   if (!r) return { ok: false, error: "Eğitmen bulunamadı." };
   sh.deleteRow(r._row);
   _invalidateCache("Instructors");
+  return { ok: true };
+}
+
+// ====================== REVISIONS & STICKY NOTES ======================
+
+function getRevisions(lessonId) {
+  return _rows("Revisions").filter(x => x.lessonId === lessonId).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 30);
+}
+
+function getStickyNotes(lessonId) {
+  return _rows("StickyNotes").filter(x => x.lessonId === lessonId);
+}
+
+function addStickyNote({ lessonId, userId, userName, color, text }) {
+  _sheet("StickyNotes").appendRow([_newId(), lessonId, userId || "", userName || "Admin", color || "yellow", text || "", _now()]);
+  _invalidateCache("StickyNotes");
+  return { ok: true };
+}
+
+function deleteStickyNote({ id }) {
+  const sh = _sheet("StickyNotes");
+  const r = _rows("StickyNotes").find(x => x.id === id);
+  if (!r) return { ok: false, error: "Not bulunamadı." };
+  sh.deleteRow(r._row);
+  _invalidateCache("StickyNotes");
   return { ok: true };
 }
