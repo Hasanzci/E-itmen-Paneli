@@ -101,6 +101,7 @@ function doPost(e) {
 
       // Comments
       case "addComment":       _checkAuth(params.token); result = addComment(params); break;
+      case "deleteComment":    _checkAuth(params.token); result = deleteComment(params); break;
 
       default: result = { ok: false, error: "Bilinmeyen işlem: " + action };
     }
@@ -409,6 +410,19 @@ function addComment({ token, lessonId, text }) {
   sh.appendRow([id, lessonId, user.id, user.name, text || "", _now()]);
   _invalidateCache("Comments");
   return { ok: true, id };
+}
+
+function deleteComment({ token, id }) {
+  const user = _getUserFromToken(token);
+  const sh = _sheet("Comments");
+  const r = _rows("Comments").find(x => x.id === id);
+  if (!r) return { ok: false, error: "Yorum bulunamadı." };
+  if (user.id !== "admin" && String(r.userId) !== String(user.id)) {
+    return { ok: false, error: "Bu yorumu silme yetkiniz yok." };
+  }
+  sh.deleteRow(r._row);
+  _invalidateCache("Comments");
+  return { ok: true };
 }
 
 // ====================== INSTRUCTORS ======================

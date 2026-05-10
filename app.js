@@ -608,22 +608,38 @@ async function loadComments(lessonId) {
       list.innerHTML = `<span class="muted" style="font-size:13px;">İlk yorumu siz yapın.</span>`;
       return;
     }
-    list.innerHTML = res.data.map(c => `
-      <div class="comment-item">
-        <div class="comment-avatar">${(c.userName || "U")[0].toUpperCase()}</div>
-        <div class="comment-body">
-          <div class="comment-meta">
-            <span class="comment-author">${escapeHtml(c.userName)}</span>
-            <span title="${new Date(c.createdAt).toLocaleString()}">${new Date(c.createdAt).toLocaleDateString('tr-TR')}</span>
+    list.innerHTML = res.data.map(c => {
+      const canDelete = state.user && (state.user.id === c.userId || state.user.role === 'admin' || state.user.id === 'admin');
+      return `
+      <div class="comment-item" style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="display:flex; gap:12px;">
+          <div class="comment-avatar">${(c.userName || "U")[0].toUpperCase()}</div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <span class="comment-author">${escapeHtml(c.userName)}</span>
+              <span title="${new Date(c.createdAt).toLocaleString()}">${new Date(c.createdAt).toLocaleDateString('tr-TR')}</span>
+            </div>
+            <div class="comment-text">${escapeHtml(c.text)}</div>
           </div>
-          <div class="comment-text">${escapeHtml(c.text)}</div>
         </div>
+        ${canDelete ? `<button class="btn btn-ghost btn-sm" onclick="deleteComment('${c.id}')" style="color:var(--danger); padding:4px 8px;">Sil</button>` : ''}
       </div>
-    `).join("");
+    `}).join("");
   } catch (e) {
     list.innerHTML = `<span class="error">Yorumlar yüklenemedi.</span>`;
   }
 }
+
+window.deleteComment = async function(id) {
+  if (!confirm("Bu yorumu silmek istediğinize emin misiniz?")) return;
+  try {
+    await api("deleteComment", { id });
+    toast("Yorum silindi", "success");
+    loadComments(state.currentLessonId);
+  } catch (e) {
+    toast(e.message, "error");
+  }
+};
 
 function setupComments() {
   const form = document.getElementById("commentForm");
@@ -881,7 +897,8 @@ function createQuillInstance(selector) {
       formula: true,
       toolbar: [
         ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': ['red', 'yellow', 'turquoise', '#ffc107', 'magenta', 'white', 'black', 'pink'] }],
+        [{ 'color': ['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff', '#e60000', '#ff9900', '#ffff00', '#008a00', '#0066cc', '#9933ff', '#facccc', '#ffebcc', '#ffffcc', '#cce8cc', '#cce0f5', '#ebd6ff', '#bbbbbb', '#f06666', '#ffc266', '#ffff66', '#66b966', '#66a3e0', '#c285ff', '#888888', '#a10000', '#b26b00', '#b2b200', '#006100', '#0047b2', '#6b24b2', '#444444', '#5c0000', '#663d00', '#666600', '#003700', '#002966', '#3d1466', 'custom-color'] }, { 'background': ['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff', '#e60000', '#ff9900', '#ffff00', '#008a00', '#0066cc', '#9933ff', '#facccc', '#ffebcc', '#ffffcc', '#cce8cc', '#cce0f5', '#ebd6ff', '#bbbbbb', '#f06666', '#ffc266', '#ffff66', '#66b966', '#66a3e0', '#c285ff', '#888888', '#a10000', '#b26b00', '#b2b200', '#006100', '#0047b2', '#6b24b2', '#444444', '#5c0000', '#663d00', '#666600', '#003700', '#002966', '#3d1466'] }],
+        [{ 'size': ['small', false, 'large', 'huge'] }],
         [{ 'header': [1, 2, 3, false] }],
         ['blockquote', 'code-block', 'formula'],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
@@ -1184,6 +1201,10 @@ function initTableEditor(sec, container) {
       <label style="color:var(--text-muted); font-size:13px; display:flex; align-items:center; gap:4px;">
         <input type="checkbox" class="header-toggle" ${sec.tableData.headerRow ? 'checked':''}> İlk satır başlık olsun
       </label>
+      <div style="display:flex; align-items:center; gap:4px; margin-left:auto;">
+        <label style="color:var(--text-muted); font-size:13px;">Hücre Rengi:</label>
+        <input type="color" class="cell-bg-picker" value="#ffffff" style="cursor:pointer; width:30px; height:30px; border:none; padding:0; background:transparent;" />
+      </div>
     </div>
     <div style="overflow-x:auto;">
     <table class="custom-table table-${sec.tableData.theme}" style="margin:0;">
@@ -1194,8 +1215,9 @@ function initTableEditor(sec, container) {
       html += `<tr>`;
       row.forEach((cell, cIndex) => {
         let tag = isHeader ? 'th' : 'td';
-        html += `<${tag}>
-          <div contenteditable="true" class="table-cell-content" data-r="${rIndex}" data-c="${cIndex}">${cell}</div>
+        let bgColor = cell.bgColor ? `background-color:${cell.bgColor};` : '';
+        html += `<${tag} style="${bgColor} padding:8px;">
+          <div contenteditable="true" class="table-cell-content" data-r="${rIndex}" data-c="${cIndex}">${cell.text !== undefined ? cell.text : cell}</div>
         </${tag}>`;
       });
       html += `<td style="width:30px; text-align:center; border:none; background:transparent;"><button class="btn btn-danger btn-sm del-row-btn" data-r="${rIndex}">-</button></td>`;
@@ -1244,9 +1266,38 @@ function initTableEditor(sec, container) {
         renderTable();
       };
     });
+
+    let lastFocusedCell = null;
+    const bgPicker = container.querySelector(".cell-bg-picker");
+    bgPicker.oninput = (e) => {
+      if (lastFocusedCell) {
+        const r = lastFocusedCell.dataset.r;
+        const c = lastFocusedCell.dataset.c;
+        if (typeof sec.tableData.rows[r][c] === 'string') {
+          sec.tableData.rows[r][c] = { text: sec.tableData.rows[r][c], bgColor: e.target.value };
+        } else {
+          sec.tableData.rows[r][c].bgColor = e.target.value;
+        }
+        lastFocusedCell.parentElement.style.backgroundColor = e.target.value;
+      }
+    };
+
     container.querySelectorAll(".table-cell-content").forEach(cell => {
+      cell.onfocus = (e) => {
+        lastFocusedCell = e.target;
+        const r = e.target.dataset.r;
+        const c = e.target.dataset.c;
+        const cellData = sec.tableData.rows[r][c];
+        bgPicker.value = (cellData && cellData.bgColor) ? cellData.bgColor : '#ffffff';
+      };
       cell.onblur = (e) => {
-        sec.tableData.rows[e.target.dataset.r][e.target.dataset.c] = e.target.innerHTML;
+        const r = e.target.dataset.r;
+        const c = e.target.dataset.c;
+        if (typeof sec.tableData.rows[r][c] === 'string') {
+          sec.tableData.rows[r][c] = e.target.innerHTML;
+        } else {
+          sec.tableData.rows[r][c].text = e.target.innerHTML;
+        }
       };
       cell.onkeydown = (e) => {
         if(e.ctrlKey || e.metaKey) {

@@ -99,6 +99,7 @@ function doPost(e) {
       // Comments
       case "getComments":    _checkAuth(params.token); result = { ok: true, data: getComments(params.lessonId) }; break;
       case "addComment":     _checkAuth(params.token); result = addComment(params); break;
+      case "deleteComment":  _checkAuth(params.token); result = deleteComment(params); break;
 
       // Revisions & StickyNotes
       case "getRevisions":    _checkAuth(params.token, "admin"); result = { ok: true, data: getRevisions(params.lessonId) }; break;
@@ -429,6 +430,19 @@ function addComment({ lessonId, userId, userName, text }) {
   sh.appendRow([id, lessonId, userId, userName, text, _now()]);
   _invalidateCache("Comments");
   return { ok: true, id };
+}
+
+function deleteComment({ token, id }) {
+  const user = _getUserFromToken(token);
+  const sh = _sheet("Comments");
+  const r = _rows("Comments").find(x => x.id === id);
+  if (!r) return { ok: false, error: "Yorum bulunamadı." };
+  if (user.id !== "admin" && String(r.userId) !== String(user.id)) {
+    return { ok: false, error: "Bu yorumu silme yetkiniz yok." };
+  }
+  sh.deleteRow(r._row);
+  _invalidateCache("Comments");
+  return { ok: true };
 }
 
 // ====================== INSTRUCTORS ======================
