@@ -18,7 +18,8 @@ const SHEETS_SCHEMA = {
   Instructors: ["id", "name", "email", "password", "createdAt"],
   Courses:     ["id", "name", "description", "createdAt"],
   Lessons:     ["id", "courseId", "title", "order", "createdAt"],
-  Materials:   ["id", "lessonId", "content", "type"]
+  Materials:   ["id", "lessonId", "content", "type"],
+  Comments:    ["id", "lessonId", "userId", "userName", "text", "createdAt"]
 };
 
 // ====================== KURULUM (manuel çalıştır) ======================
@@ -78,6 +79,7 @@ function doPost(e) {
       case "getLessons":     _checkAuth(params.token); result = { ok: true, data: getLessons(params.courseId) }; break;
       case "getMaterials":   _checkAuth(params.token); result = { ok: true, data: getMaterials(params.lessonId) }; break;
       case "getInstructors": _checkAuth(params.token, "admin"); result = { ok: true, data: getInstructors() }; break;
+      case "getComments":    _checkAuth(params.token); result = { ok: true, data: getComments(params.lessonId) }; break;
 
       // Courses
       case "addCourse":    _checkAuth(params.token, "admin"); result = addCourse(params); break;
@@ -96,6 +98,9 @@ function doPost(e) {
       case "addInstructor":    _checkAuth(params.token, "admin"); result = addInstructor(params); break;
       case "updateInstructor": _checkAuth(params.token, "admin"); result = updateInstructor(params); break;
       case "deleteInstructor": _checkAuth(params.token, "admin"); result = deleteInstructor(params); break;
+
+      // Comments
+      case "addComment":       _checkAuth(params.token); result = addComment(params); break;
 
       default: result = { ok: false, error: "Bilinmeyen işlem: " + action };
     }
@@ -234,6 +239,16 @@ function instructorLogin({ email, password }) {
     ok: true, role: "instructor", token: "ins:" + u.id + ":" + u.password,
     user: { id: u.id, name: u.name, email: u.email }
   };
+}
+
+function _getUserFromToken(token) {
+  if (token.startsWith("admin:")) return { id: "admin", name: "Admin" };
+  if (token.startsWith("ins:")) {
+    const parts = token.split(":");
+    const u = _rows("Instructors").find(x => x.id === parts[1]);
+    if (u) return { id: u.id, name: u.name };
+  }
+  return { id: "anon", name: "Anonim" };
 }
 
 // ====================== BOOTSTRAP (yeni) ======================
@@ -376,6 +391,24 @@ function saveMaterial({ lessonId, content, type }) {
   }
   _invalidateCache("Materials");
   return { ok: true };
+}
+
+// ====================== COMMENTS ======================
+
+function getComments(lessonId) {
+  return _rows("Comments")
+    .filter(r => r.lessonId === lessonId)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map(r => ({ id: r.id, lessonId: r.lessonId, userId: r.userId, userName: r.userName, text: r.text, createdAt: r.createdAt }));
+}
+
+function addComment({ token, lessonId, text }) {
+  const user = _getUserFromToken(token);
+  const sh = _sheet("Comments");
+  const id = _newId();
+  sh.appendRow([id, lessonId, user.id, user.name, text || "", _now()]);
+  _invalidateCache("Comments");
+  return { ok: true, id };
 }
 
 // ====================== INSTRUCTORS ======================

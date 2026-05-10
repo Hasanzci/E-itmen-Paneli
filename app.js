@@ -625,6 +625,26 @@ async function loadComments(lessonId) {
   }
 }
 
+function setupComments() {
+  const form = document.getElementById("commentForm");
+  if (!form) return;
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const input = document.getElementById("commentInput");
+    const text = input.value;
+    if (!text.trim()) return;
+    
+    try {
+      await api("addComment", { lessonId: state.currentLessonId, text });
+      input.value = "";
+      toast("Yorumunuz eklendi", "success");
+      loadComments(state.currentLessonId);
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+}
+
 // ============= ADMIN AKIŞI =============
 
 function setupAdminTabs() {
@@ -861,6 +881,7 @@ function createQuillInstance(selector) {
       formula: true,
       toolbar: [
         ['bold', 'italic', 'underline', 'strike'],
+        [{ 'color': ['red', 'yellow', 'turquoise', '#ffc107', 'magenta', 'white', 'black', 'pink'] }],
         [{ 'header': [1, 2, 3, false] }],
         ['blockquote', 'code-block', 'formula'],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
@@ -967,7 +988,7 @@ async function openAdminMaterial(lessonId, title) {
   $("#revisionsBtn").onclick = showRevisions;
   
   if (autoSaveInterval) clearInterval(autoSaveInterval);
-  autoSaveInterval = setInterval(autoSaveTick, 10000);
+  // autoSaveInterval = setInterval(autoSaveTick, 10000); // OTOMATİK KAYIT İPTAL EDİLDİ
   lastSavedContentStr = "";
   
   $("#addSectionBtn").onclick = () => {
@@ -1408,6 +1429,22 @@ function setupMaterialEditor() {
     q.setSelection(range.index + 2);
   });
 
+  const btnTinkercad = document.getElementById("insertTinkercadBtn");
+  if (btnTinkercad) {
+    btnTinkercad.addEventListener("click", () => {
+      const q = getActiveQuill(); if (!q) return;
+      let url = prompt("Tinkercad Paylaşım URL'si (örn. https://www.tinkercad.com/things/...):");
+      if (!url) return;
+      if (url.includes("/things/")) {
+        url = url.replace("/things/", "/embed/");
+      }
+      const range = q.getSelection(true) || { index: q.getLength() };
+      q.insertEmbed(range.index, 'video', url, 'user');
+      q.insertText(range.index + 1, '\n', 'user');
+      q.setSelection(range.index + 2);
+    });
+  }
+
   $("#insertPdfBtn").addEventListener("click", () => {
     const q = getActiveQuill(); if (!q) return;
     const url = prompt("PDF/Drive linkini yapıştır:");
@@ -1537,6 +1574,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupAddLesson();
   setupMaterialEditor();
   setupAddInstructor();
+  setupComments();
 
   if (loadSession()) enterApp();
   else {
